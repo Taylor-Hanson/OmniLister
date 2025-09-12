@@ -14,6 +14,7 @@ import Analytics from "@/pages/analytics";
 import Marketplaces from "@/pages/marketplaces";
 import Settings from "@/pages/settings";
 import Subscribe from "@/pages/subscribe";
+import Sync from "@/pages/sync";
 import NotFound from "@/pages/not-found";
 
 function PrivateRoute({ component: Component, ...rest }: any) {
@@ -48,6 +49,7 @@ function Router() {
             <Route path="/bulk-manager" component={BulkManager} />
             <Route path="/analytics" component={Analytics} />
             <Route path="/marketplaces" component={Marketplaces} />
+            <Route path="/sync" component={Sync} />
             <Route path="/settings" component={Settings} />
             <Route path="/subscribe" component={Subscribe} />
             <Route component={NotFound} />
