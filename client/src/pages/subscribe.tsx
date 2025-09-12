@@ -11,10 +11,9 @@ import { CheckCircle } from "lucide-react";
 
 // Make sure to call `loadStripe` outside of a component's render to avoid
 // recreating the `Stripe` object on every render.
-if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
-  throw new Error('Missing required Stripe key: VITE_STRIPE_PUBLIC_KEY');
-}
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
+const stripePromise = import.meta.env.VITE_STRIPE_PUBLIC_KEY 
+  ? loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY)
+  : null;
 
 const SubscribeForm = () => {
   const stripe = useStripe();
@@ -71,6 +70,11 @@ export default function Subscribe() {
   const { toast } = useToast();
 
   useEffect(() => {
+    // Only create subscription if Stripe is configured
+    if (!stripePromise) {
+      return;
+    }
+    
     // Create subscription as soon as the page loads
     apiRequest("POST", "/api/get-or-create-subscription")
       .then((res) => res.json())
@@ -85,6 +89,39 @@ export default function Subscribe() {
         });
       });
   }, [toast]);
+
+  // Show message when Stripe is not configured
+  if (!stripePromise) {
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+        <Card className="max-w-2xl mx-auto">
+          <CardHeader>
+            <CardTitle className="text-center">Subscription Not Available</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center space-y-4">
+              <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto">
+                <i className="fas fa-exclamation-triangle text-yellow-600 text-2xl"></i>
+              </div>
+              <p className="text-muted-foreground">
+                Subscription features are currently not available. The payment system is not configured.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Please contact support if you need assistance or check back later.
+              </p>
+              <Button 
+                className="mt-6" 
+                onClick={() => window.location.href = '/'}
+                data-testid="button-return-dashboard"
+              >
+                Return to Dashboard
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (user?.plan === 'pro') {
     return (
@@ -207,9 +244,15 @@ export default function Subscribe() {
               <CardTitle>Complete Your Subscription</CardTitle>
             </CardHeader>
             <CardContent>
-              <Elements stripe={stripePromise} options={{ clientSecret }}>
-                <SubscribeForm />
-              </Elements>
+              {stripePromise && clientSecret ? (
+                <Elements stripe={stripePromise} options={{ clientSecret }}>
+                  <SubscribeForm />
+                </Elements>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">Loading payment form...</p>
+                </div>
+              )}
               
               <div className="mt-6 text-center">
                 <p className="text-xs text-muted-foreground">
