@@ -94,6 +94,68 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Sync Settings - global configuration per user
+export const syncSettings = pgTable("sync_settings", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  autoSync: boolean("auto_sync").default(false),
+  syncFrequency: text("sync_frequency").default("manual"), // manual, immediate, hourly, daily
+  syncFields: jsonb("sync_fields"), // { price: true, inventory: true, description: true, images: true }
+  defaultBehavior: jsonb("default_behavior"), // default sync behaviors
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Sync Rules - platform-specific rules
+export const syncRules = pgTable("sync_rules", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace").notNull(),
+  isEnabled: boolean("is_enabled").default(true),
+  priceAdjustment: decimal("price_adjustment", { precision: 5, scale: 2 }).default("0"), // percentage adjustment
+  priceFormula: text("price_formula"), // custom price formula
+  fieldsToSync: jsonb("fields_to_sync"), // which fields to sync for this platform
+  templateOverrides: jsonb("template_overrides"), // platform-specific templates
+  priority: integer("priority").default(0), // sync priority order
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Sync History - track all sync operations
+export const syncHistory = pgTable("sync_history", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  listingId: uuid("listing_id").references(() => listings.id, { onDelete: "set null" }),
+  sourceMarketplace: text("source_marketplace"),
+  targetMarketplace: text("target_marketplace").notNull(),
+  syncType: text("sync_type").notNull(), // create, update, delete, inventory
+  status: text("status").notNull(), // success, failed, pending
+  fieldsUpdated: jsonb("fields_updated"), // which fields were synced
+  previousValues: jsonb("previous_values"), // values before sync
+  newValues: jsonb("new_values"), // values after sync
+  errorMessage: text("error_message"),
+  syncDuration: integer("sync_duration"), // milliseconds
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Sync Conflicts - track and resolve conflicts
+export const syncConflicts = pgTable("sync_conflicts", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  listingId: uuid("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
+  conflictType: text("conflict_type").notNull(), // price_mismatch, inventory_mismatch, description_conflict, etc.
+  sourceMarketplace: text("source_marketplace").notNull(),
+  targetMarketplace: text("target_marketplace").notNull(),
+  sourceValue: jsonb("source_value"), // value from source marketplace
+  targetValue: jsonb("target_value"), // value from target marketplace
+  resolution: text("resolution"), // keep_source, keep_target, merge, custom
+  resolvedValue: jsonb("resolved_value"), // final resolved value
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: uuid("resolved_by").references(() => users.id),
+  autoResolved: boolean("auto_resolved").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,
@@ -135,6 +197,45 @@ export const insertJobSchema = createInsertSchema(jobs).pick({
   scheduledFor: true,
 });
 
+export const insertSyncSettingsSchema = createInsertSchema(syncSettings).pick({
+  autoSync: true,
+  syncFrequency: true,
+  syncFields: true,
+  defaultBehavior: true,
+});
+
+export const insertSyncRuleSchema = createInsertSchema(syncRules).pick({
+  marketplace: true,
+  isEnabled: true,
+  priceAdjustment: true,
+  priceFormula: true,
+  fieldsToSync: true,
+  templateOverrides: true,
+  priority: true,
+});
+
+export const insertSyncHistorySchema = createInsertSchema(syncHistory).pick({
+  listingId: true,
+  sourceMarketplace: true,
+  targetMarketplace: true,
+  syncType: true,
+  status: true,
+  fieldsUpdated: true,
+  previousValues: true,
+  newValues: true,
+  errorMessage: true,
+  syncDuration: true,
+});
+
+export const insertSyncConflictSchema = createInsertSchema(syncConflicts).pick({
+  listingId: true,
+  conflictType: true,
+  sourceMarketplace: true,
+  targetMarketplace: true,
+  sourceValue: true,
+  targetValue: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -147,3 +248,11 @@ export type InsertListingPost = z.infer<typeof insertListingPostSchema>;
 export type Job = typeof jobs.$inferSelect;
 export type InsertJob = z.infer<typeof insertJobSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
+export type SyncSettings = typeof syncSettings.$inferSelect;
+export type InsertSyncSettings = z.infer<typeof insertSyncSettingsSchema>;
+export type SyncRule = typeof syncRules.$inferSelect;
+export type InsertSyncRule = z.infer<typeof insertSyncRuleSchema>;
+export type SyncHistory = typeof syncHistory.$inferSelect;
+export type InsertSyncHistory = z.infer<typeof insertSyncHistorySchema>;
+export type SyncConflict = typeof syncConflicts.$inferSelect;
+export type InsertSyncConflict = z.infer<typeof insertSyncConflictSchema>;

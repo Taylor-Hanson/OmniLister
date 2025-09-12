@@ -6,8 +6,9 @@ import { storage } from "./storage";
 import { aiService } from "./services/aiService";
 import { marketplaceService } from "./services/marketplaceService";
 import { queueService } from "./services/queueService";
+import { syncService } from "./services/syncService";
 import { requireAuth, optionalAuth, requirePlan } from "./middleware/auth";
-import { insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema } from "@shared/schema";
+import { insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema, insertSyncSettingsSchema, insertSyncRuleSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
 
 // Stripe client - only initialized if API key is available
@@ -419,6 +420,191 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const job = await queueService.createSyncInventoryJob(req.user!.id, listingId, soldMarketplace);
       res.json(job);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Sync settings routes
+  app.get("/api/sync/settings", requireAuth, async (req, res) => {
+    try {
+      const settings = await storage.getSyncSettings(req.user!.id);
+      if (!settings) {
+        // Return default settings if none exist
+        return res.json({
+          autoSync: false,
+          syncFrequency: "manual",
+          syncFields: {
+            price: true,
+            inventory: true,
+            description: true,
+            images: true,
+          },
+          defaultBehavior: {
+            priceConflictResolution: "highest",
+            inventoryConflictResolution: "lowest",
+            descriptionConflictResolution: "longest",
+          },
+        });
+      }
+      res.json(settings);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/sync/settings", requireAuth, async (req, res) => {
+    try {
+      const settings = insertSyncSettingsSchema.parse(req.body);
+      const existingSettings = await storage.getSyncSettings(req.user!.id);
+      
+      let result;
+      if (existingSettings) {
+        result = await storage.updateSyncSettings(req.user!.id, settings);
+      } else {
+        result = await storage.createSyncSettings(req.user!.id, settings);
+      }
+      
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Sync rules routes
+  app.get("/api/sync/rules", requireAuth, async (req, res) => {
+    try {
+      const rules = await storage.getSyncRules(req.user!.id);
+      res.json(rules);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/sync/rules", requireAuth, async (req, res) => {
+    try {
+      const rule = insertSyncRuleSchema.parse(req.body);
+      const result = await storage.createSyncRule(req.user!.id, rule);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/sync/rules/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rule = await storage.getSyncRule(id);
+      
+      if (!rule || rule.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Sync rule not found" });
+      }
+      
+      const result = await storage.updateSyncRule(id, req.body);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/sync/rules/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rule = await storage.getSyncRule(id);
+      
+      if (!rule || rule.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Rule not found" });
+      }
+      
+      await storage.deleteSyncRule(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Sync execution routes
+  app.post("/api/sync/execute", requireAuth, async (req, res) => {
+    try {
+      const { listingId, targetMarketplace, sourceMarketplace } = req.body;
+      
+      if (listingId) {
+        // Sync single listing
+        const result = await syncService.syncListing(
+          req.user!.id,
+          listingId,
+          targetMarketplace,
+          sourceMarketplace
+        );
+        res.json(result);
+      } else {
+        // Sync all listings
+        const results = await syncService.syncAllListings(req.user!.id);
+        res.json(results);
+      }
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/sync/status", requireAuth, async (req, res) => {
+    try {
+      const status = await syncService.getSyncStatus(req.user!.id);
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Sync history routes
+  app.get("/api/sync/history", requireAuth, async (req, res) => {
+    try {
+      const { limit = 50 } = req.query;
+      const history = await storage.getSyncHistory(req.user!.id, Number(limit));
+      res.json(history);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Sync conflicts routes
+  app.get("/api/sync/conflicts", requireAuth, async (req, res) => {
+    try {
+      const { resolved } = req.query;
+      const conflicts = await storage.getSyncConflicts(
+        req.user!.id, 
+        resolved === "true" ? true : resolved === "false" ? false : undefined
+      );
+      res.json(conflicts);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/sync/resolve-conflict", requireAuth, async (req, res) => {
+    try {
+      const { conflictId, resolution, resolvedValue } = req.body;
+      
+      if (!conflictId || !resolution) {
+        return res.status(400).json({ error: "Conflict ID and resolution are required" });
+      }
+      
+      const conflict = await storage.getSyncConflict(conflictId);
+      if (!conflict || conflict.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Conflict not found" });
+      }
+      
+      const result = await storage.resolveSyncConflict(conflictId, resolution, resolvedValue);
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/sync/auto-resolve", requireAuth, async (req, res) => {
+    try {
+      await syncService.autoResolveConflicts(req.user!.id);
+      res.json({ success: true, message: "Conflicts auto-resolved based on settings" });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
