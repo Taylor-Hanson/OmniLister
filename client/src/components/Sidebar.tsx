@@ -39,6 +39,12 @@ const navigationItems = [
     testId: "nav-marketplaces"
   },
   {
+    href: "/sync",
+    icon: "fas fa-sync",
+    label: "Sync",
+    testId: "nav-sync"
+  },
+  {
     href: "/settings",
     icon: "fas fa-cog",
     label: "Settings",
