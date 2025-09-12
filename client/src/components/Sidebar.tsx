@@ -45,6 +45,12 @@ const navigationItems = [
     testId: "nav-sync"
   },
   {
+    href: "/auto-delist",
+    icon: "fas fa-clock",
+    label: "Auto-Delist",
+    testId: "nav-auto-delist"
+  },
+  {
     href: "/settings",
     icon: "fas fa-cog",
     label: "Settings",
