@@ -1,0 +1,311 @@
+import { type User, type InsertUser, type MarketplaceConnection, type InsertMarketplaceConnection, type Listing, type InsertListing, type ListingPost, type InsertListingPost, type Job, type InsertJob, type AuditLog } from "@shared/schema";
+import { randomUUID } from "crypto";
+
+export interface IStorage {
+  // User methods
+  getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<User>): Promise<User>;
+  updateUserStripeInfo(id: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<User>;
+
+  // Marketplace Connection methods
+  getMarketplaceConnections(userId: string): Promise<MarketplaceConnection[]>;
+  getMarketplaceConnection(userId: string, marketplace: string): Promise<MarketplaceConnection | undefined>;
+  createMarketplaceConnection(userId: string, connection: InsertMarketplaceConnection): Promise<MarketplaceConnection>;
+  updateMarketplaceConnection(id: string, updates: Partial<MarketplaceConnection>): Promise<MarketplaceConnection>;
+  deleteMarketplaceConnection(id: string): Promise<void>;
+
+  // Listing methods
+  getListings(userId: string, filters?: { status?: string; marketplace?: string }): Promise<Listing[]>;
+  getListing(id: string): Promise<Listing | undefined>;
+  createListing(userId: string, listing: InsertListing): Promise<Listing>;
+  updateListing(id: string, updates: Partial<Listing>): Promise<Listing>;
+  deleteListing(id: string): Promise<void>;
+
+  // Listing Post methods
+  getListingPosts(listingId: string): Promise<ListingPost[]>;
+  getListingPost(listingId: string, marketplace: string): Promise<ListingPost | undefined>;
+  createListingPost(post: InsertListingPost): Promise<ListingPost>;
+  updateListingPost(id: string, updates: Partial<ListingPost>): Promise<ListingPost>;
+
+  // Job methods
+  getJobs(userId: string, filters?: { status?: string; type?: string }): Promise<Job[]>;
+  getJob(id: string): Promise<Job | undefined>;
+  createJob(userId: string, job: InsertJob): Promise<Job>;
+  updateJob(id: string, updates: Partial<Job>): Promise<Job>;
+
+  // Audit Log methods
+  createAuditLog(log: Omit<AuditLog, 'id' | 'createdAt'>): Promise<AuditLog>;
+  getAuditLogs(userId: string, limit?: number): Promise<AuditLog[]>;
+
+  // Stats methods
+  getUserStats(userId: string): Promise<{
+    activeListings: number;
+    totalSales: number;
+    monthlyRevenue: number;
+    conversionRate: number;
+  }>;
+}
+
+export class MemStorage implements IStorage {
+  private users: Map<string, User> = new Map();
+  private marketplaceConnections: Map<string, MarketplaceConnection> = new Map();
+  private listings: Map<string, Listing> = new Map();
+  private listingPosts: Map<string, ListingPost> = new Map();
+  private jobs: Map<string, Job> = new Map();
+  private auditLogs: Map<string, AuditLog> = new Map();
+
+  async getUser(id: string): Promise<User | undefined> {
+    return this.users.get(id);
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user => user.email === email);
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user => user.username === username);
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const id = randomUUID();
+    const user: User = {
+      ...insertUser,
+      id,
+      plan: "free",
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      subscriptionStatus: "inactive",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.users.set(id, user);
+    return user;
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User> {
+    const user = this.users.get(id);
+    if (!user) throw new Error("User not found");
+    
+    const updatedUser = { ...user, ...updates, updatedAt: new Date() };
+    this.users.set(id, updatedUser);
+    return updatedUser;
+  }
+
+  async updateUserStripeInfo(id: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<User> {
+    return this.updateUser(id, { stripeCustomerId, stripeSubscriptionId });
+  }
+
+  async getMarketplaceConnections(userId: string): Promise<MarketplaceConnection[]> {
+    return Array.from(this.marketplaceConnections.values()).filter(conn => conn.userId === userId);
+  }
+
+  async getMarketplaceConnection(userId: string, marketplace: string): Promise<MarketplaceConnection | undefined> {
+    return Array.from(this.marketplaceConnections.values()).find(
+      conn => conn.userId === userId && conn.marketplace === marketplace
+    );
+  }
+
+  async createMarketplaceConnection(userId: string, connection: InsertMarketplaceConnection): Promise<MarketplaceConnection> {
+    const id = randomUUID();
+    const conn: MarketplaceConnection = {
+      ...connection,
+      id,
+      userId,
+      isConnected: true,
+      lastSyncAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.marketplaceConnections.set(id, conn);
+    return conn;
+  }
+
+  async updateMarketplaceConnection(id: string, updates: Partial<MarketplaceConnection>): Promise<MarketplaceConnection> {
+    const conn = this.marketplaceConnections.get(id);
+    if (!conn) throw new Error("Connection not found");
+    
+    const updatedConn = { ...conn, ...updates, updatedAt: new Date() };
+    this.marketplaceConnections.set(id, updatedConn);
+    return updatedConn;
+  }
+
+  async deleteMarketplaceConnection(id: string): Promise<void> {
+    this.marketplaceConnections.delete(id);
+  }
+
+  async getListings(userId: string, filters?: { status?: string; marketplace?: string }): Promise<Listing[]> {
+    let listings = Array.from(this.listings.values()).filter(listing => listing.userId === userId);
+    
+    if (filters?.status) {
+      listings = listings.filter(listing => listing.status === filters.status);
+    }
+    
+    return listings.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getListing(id: string): Promise<Listing | undefined> {
+    return this.listings.get(id);
+  }
+
+  async createListing(userId: string, listing: InsertListing): Promise<Listing> {
+    const id = randomUUID();
+    const newListing: Listing = {
+      ...listing,
+      id,
+      userId,
+      status: "draft",
+      aiGenerated: false,
+      originalImageUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.listings.set(id, newListing);
+    return newListing;
+  }
+
+  async updateListing(id: string, updates: Partial<Listing>): Promise<Listing> {
+    const listing = this.listings.get(id);
+    if (!listing) throw new Error("Listing not found");
+    
+    const updatedListing = { ...listing, ...updates, updatedAt: new Date() };
+    this.listings.set(id, updatedListing);
+    return updatedListing;
+  }
+
+  async deleteListing(id: string): Promise<void> {
+    this.listings.delete(id);
+  }
+
+  async getListingPosts(listingId: string): Promise<ListingPost[]> {
+    return Array.from(this.listingPosts.values()).filter(post => post.listingId === listingId);
+  }
+
+  async getListingPost(listingId: string, marketplace: string): Promise<ListingPost | undefined> {
+    return Array.from(this.listingPosts.values()).find(
+      post => post.listingId === listingId && post.marketplace === marketplace
+    );
+  }
+
+  async createListingPost(post: InsertListingPost): Promise<ListingPost> {
+    const id = randomUUID();
+    const newPost: ListingPost = {
+      ...post,
+      id,
+      externalId: null,
+      externalUrl: null,
+      status: "pending",
+      errorMessage: null,
+      postedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.listingPosts.set(id, newPost);
+    return newPost;
+  }
+
+  async updateListingPost(id: string, updates: Partial<ListingPost>): Promise<ListingPost> {
+    const post = this.listingPosts.get(id);
+    if (!post) throw new Error("Listing post not found");
+    
+    const updatedPost = { ...post, ...updates, updatedAt: new Date() };
+    this.listingPosts.set(id, updatedPost);
+    return updatedPost;
+  }
+
+  async getJobs(userId: string, filters?: { status?: string; type?: string }): Promise<Job[]> {
+    let jobs = Array.from(this.jobs.values()).filter(job => job.userId === userId);
+    
+    if (filters?.status) {
+      jobs = jobs.filter(job => job.status === filters.status);
+    }
+    
+    if (filters?.type) {
+      jobs = jobs.filter(job => job.type === filters.type);
+    }
+    
+    return jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getJob(id: string): Promise<Job | undefined> {
+    return this.jobs.get(id);
+  }
+
+  async createJob(userId: string, job: InsertJob): Promise<Job> {
+    const id = randomUUID();
+    const newJob: Job = {
+      ...job,
+      id,
+      userId,
+      status: "pending",
+      progress: 0,
+      result: null,
+      errorMessage: null,
+      attempts: 0,
+      maxAttempts: 3,
+      startedAt: null,
+      completedAt: null,
+      createdAt: new Date(),
+    };
+    this.jobs.set(id, newJob);
+    return newJob;
+  }
+
+  async updateJob(id: string, updates: Partial<Job>): Promise<Job> {
+    const job = this.jobs.get(id);
+    if (!job) throw new Error("Job not found");
+    
+    const updatedJob = { ...job, ...updates };
+    this.jobs.set(id, updatedJob);
+    return updatedJob;
+  }
+
+  async createAuditLog(log: Omit<AuditLog, 'id' | 'createdAt'>): Promise<AuditLog> {
+    const id = randomUUID();
+    const auditLog: AuditLog = {
+      ...log,
+      id,
+      createdAt: new Date(),
+    };
+    this.auditLogs.set(id, auditLog);
+    return auditLog;
+  }
+
+  async getAuditLogs(userId: string, limit = 50): Promise<AuditLog[]> {
+    return Array.from(this.auditLogs.values())
+      .filter(log => log.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  }
+
+  async getUserStats(userId: string): Promise<{
+    activeListings: number;
+    totalSales: number;
+    monthlyRevenue: number;
+    conversionRate: number;
+  }> {
+    const listings = await this.getListings(userId);
+    const activeListings = listings.filter(listing => listing.status === 'active').length;
+    const soldListings = listings.filter(listing => listing.status === 'sold');
+    
+    // Calculate monthly revenue (mock calculation)
+    const monthlyRevenue = soldListings.reduce((sum, listing) => {
+      const price = parseFloat(listing.price);
+      return sum + (isNaN(price) ? 0 : price);
+    }, 0);
+    
+    const totalSales = soldListings.length;
+    const conversionRate = listings.length > 0 ? (totalSales / listings.length) * 100 : 0;
+    
+    return {
+      activeListings,
+      totalSales,
+      monthlyRevenue,
+      conversionRate: Math.round(conversionRate * 10) / 10,
+    };
+  }
+}
+
+export const storage = new MemStorage();
