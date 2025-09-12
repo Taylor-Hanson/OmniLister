@@ -1,4 +1,15 @@
-import { type User, type InsertUser, type MarketplaceConnection, type InsertMarketplaceConnection, type Listing, type InsertListing, type ListingPost, type InsertListingPost, type Job, type InsertJob, type AuditLog } from "@shared/schema";
+import { 
+  type User, type InsertUser, 
+  type MarketplaceConnection, type InsertMarketplaceConnection, 
+  type Listing, type InsertListing, 
+  type ListingPost, type InsertListingPost, 
+  type Job, type InsertJob, 
+  type AuditLog,
+  type SyncSettings, type InsertSyncSettings,
+  type SyncRule, type InsertSyncRule,
+  type SyncHistory, type InsertSyncHistory,
+  type SyncConflict, type InsertSyncConflict
+} from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -47,6 +58,28 @@ export interface IStorage {
     monthlyRevenue: number;
     conversionRate: number;
   }>;
+
+  // Sync Settings methods
+  getSyncSettings(userId: string): Promise<SyncSettings | undefined>;
+  createSyncSettings(userId: string, settings: InsertSyncSettings): Promise<SyncSettings>;
+  updateSyncSettings(userId: string, updates: Partial<SyncSettings>): Promise<SyncSettings>;
+
+  // Sync Rule methods
+  getSyncRules(userId: string): Promise<SyncRule[]>;
+  getSyncRule(id: string): Promise<SyncRule | undefined>;
+  createSyncRule(userId: string, rule: InsertSyncRule): Promise<SyncRule>;
+  updateSyncRule(id: string, updates: Partial<SyncRule>): Promise<SyncRule>;
+  deleteSyncRule(id: string): Promise<void>;
+
+  // Sync History methods
+  getSyncHistory(userId: string, limit?: number): Promise<SyncHistory[]>;
+  createSyncHistory(userId: string, history: InsertSyncHistory): Promise<SyncHistory>;
+
+  // Sync Conflict methods
+  getSyncConflicts(userId: string, resolved?: boolean): Promise<SyncConflict[]>;
+  getSyncConflict(id: string): Promise<SyncConflict | undefined>;
+  createSyncConflict(userId: string, conflict: InsertSyncConflict): Promise<SyncConflict>;
+  resolveSyncConflict(id: string, resolution: string, resolvedValue: any): Promise<SyncConflict>;
 }
 
 export class MemStorage implements IStorage {
@@ -56,6 +89,10 @@ export class MemStorage implements IStorage {
   private listingPosts: Map<string, ListingPost> = new Map();
   private jobs: Map<string, Job> = new Map();
   private auditLogs: Map<string, AuditLog> = new Map();
+  private syncSettings: Map<string, SyncSettings> = new Map();
+  private syncRules: Map<string, SyncRule> = new Map();
+  private syncHistory: Map<string, SyncHistory> = new Map();
+  private syncConflicts: Map<string, SyncConflict> = new Map();
 
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
@@ -305,6 +342,137 @@ export class MemStorage implements IStorage {
       monthlyRevenue,
       conversionRate: Math.round(conversionRate * 10) / 10,
     };
+  }
+
+  // Sync Settings methods
+  async getSyncSettings(userId: string): Promise<SyncSettings | undefined> {
+    return Array.from(this.syncSettings.values()).find(settings => settings.userId === userId);
+  }
+
+  async createSyncSettings(userId: string, settings: InsertSyncSettings): Promise<SyncSettings> {
+    const id = randomUUID();
+    const newSettings: SyncSettings = {
+      ...settings,
+      id,
+      userId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.syncSettings.set(id, newSettings);
+    return newSettings;
+  }
+
+  async updateSyncSettings(userId: string, updates: Partial<SyncSettings>): Promise<SyncSettings> {
+    const settings = await this.getSyncSettings(userId);
+    if (!settings) throw new Error("Sync settings not found");
+    
+    const updatedSettings = { ...settings, ...updates, updatedAt: new Date() };
+    this.syncSettings.set(settings.id, updatedSettings);
+    return updatedSettings;
+  }
+
+  // Sync Rule methods
+  async getSyncRules(userId: string): Promise<SyncRule[]> {
+    return Array.from(this.syncRules.values())
+      .filter(rule => rule.userId === userId)
+      .sort((a, b) => a.priority - b.priority);
+  }
+
+  async getSyncRule(id: string): Promise<SyncRule | undefined> {
+    return this.syncRules.get(id);
+  }
+
+  async createSyncRule(userId: string, rule: InsertSyncRule): Promise<SyncRule> {
+    const id = randomUUID();
+    const newRule: SyncRule = {
+      ...rule,
+      id,
+      userId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.syncRules.set(id, newRule);
+    return newRule;
+  }
+
+  async updateSyncRule(id: string, updates: Partial<SyncRule>): Promise<SyncRule> {
+    const rule = this.syncRules.get(id);
+    if (!rule) throw new Error("Sync rule not found");
+    
+    const updatedRule = { ...rule, ...updates, updatedAt: new Date() };
+    this.syncRules.set(id, updatedRule);
+    return updatedRule;
+  }
+
+  async deleteSyncRule(id: string): Promise<void> {
+    this.syncRules.delete(id);
+  }
+
+  // Sync History methods
+  async getSyncHistory(userId: string, limit = 50): Promise<SyncHistory[]> {
+    return Array.from(this.syncHistory.values())
+      .filter(history => history.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  }
+
+  async createSyncHistory(userId: string, history: InsertSyncHistory): Promise<SyncHistory> {
+    const id = randomUUID();
+    const newHistory: SyncHistory = {
+      ...history,
+      id,
+      userId,
+      createdAt: new Date(),
+    };
+    this.syncHistory.set(id, newHistory);
+    return newHistory;
+  }
+
+  // Sync Conflict methods
+  async getSyncConflicts(userId: string, resolved?: boolean): Promise<SyncConflict[]> {
+    let conflicts = Array.from(this.syncConflicts.values()).filter(conflict => conflict.userId === userId);
+    
+    if (resolved !== undefined) {
+      conflicts = conflicts.filter(conflict => resolved ? conflict.resolvedAt !== null : conflict.resolvedAt === null);
+    }
+    
+    return conflicts.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getSyncConflict(id: string): Promise<SyncConflict | undefined> {
+    return this.syncConflicts.get(id);
+  }
+
+  async createSyncConflict(userId: string, conflict: InsertSyncConflict): Promise<SyncConflict> {
+    const id = randomUUID();
+    const newConflict: SyncConflict = {
+      ...conflict,
+      id,
+      userId,
+      resolution: null,
+      resolvedValue: null,
+      resolvedAt: null,
+      resolvedBy: null,
+      autoResolved: false,
+      createdAt: new Date(),
+    };
+    this.syncConflicts.set(id, newConflict);
+    return newConflict;
+  }
+
+  async resolveSyncConflict(id: string, resolution: string, resolvedValue: any): Promise<SyncConflict> {
+    const conflict = this.syncConflicts.get(id);
+    if (!conflict) throw new Error("Sync conflict not found");
+    
+    const resolvedConflict = { 
+      ...conflict, 
+      resolution, 
+      resolvedValue, 
+      resolvedAt: new Date(),
+      autoResolved: false 
+    };
+    this.syncConflicts.set(id, resolvedConflict);
+    return resolvedConflict;
   }
 }
 
