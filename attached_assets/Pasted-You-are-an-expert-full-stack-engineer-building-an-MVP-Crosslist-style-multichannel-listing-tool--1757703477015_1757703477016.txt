@@ -1,0 +1,131 @@
+You are an expert full-stack engineer building an MVP “Crosslist-style” multichannel listing tool.
+
+# Goals
+- Build a production-readiness MVP that lets a seller compose a product listing once and post it to 2–3 marketplaces (start with: eBay via official API; Poshmark & Mercari via API if available; otherwise provide stubs and a Playwright-based adapter behind a clear feature flag).
+- Provide a bulk queue to post multiple listings reliably with retries, idempotency, and status tracking.
+- Provide basic inventory sync (on successful sale, mark as sold and delist queued duplicates).
+- Include AI assists for title/description rewrite and optional background removal (wire to stubbed services with clean interfaces).
+- Ship with auth, plans, and Stripe subscriptions for paid tiers.
+
+# Non-negotiables / Platform fit
+- Use **Next.js App Router** for the web app UI, TypeScript end-to-end. :contentReference[oaicite:1]{index=1}
+- Use **Node.js** backend with a **BullMQ** queue and Redis for background jobs. Include a small worker process. :contentReference[oaicite:2]{index=2}
+- Use **Supabase** (Postgres + Storage) for data and media files (images). :contentReference[oaicite:3]{index=3}
+- Use **Playwright** only behind an adapter interface when no official API exists (keep it optional and gated). :contentReference[oaicite:4]{index=4}
+- Use **Stripe Billing** for subscriptions (Checkout; monthly/annual). :contentReference[oaicite:5]{index=5}
+- Respect marketplace Terms of Service. Provide an “APIs-only” mode by default. Clearly separate any headless automation code behind a feature flag.
+
+# Security, secrets, and deploy
+- Expect all API keys and secrets to be provided via **Replit Secrets**. Do NOT hardcode secrets. Document required keys in README. :contentReference[oaicite:6]{index=6}
+- Include a “Deploy to Replit” flow and instructions for **Replit Deployments**. Provide one Static/Edge deploy for the Next.js app and one Service for the worker. :contentReference[oaicite:7]{index=7}
+- Provide a script to seed a local/dev Supabase schema.
+
+# Features (MVP)
+1) **Auth & Accounts**
+   - Email/password auth (or Supabase Auth) with session handling.
+   - Team-ready user model (single user is fine; design for future orgs).
+
+2) **Marketplace Connections**
+   - eBay: OAuth + token storage; minimal scopes; test mode.
+   - Poshmark, Mercari: abstraction layer with two implementations:
+     - `MarketplaceApiClient` (preferred)
+     - `MarketplaceHeadlessClient` (Playwright) behind `HEADLESS_AUTOMATION_ENABLED=false` by default.
+   - Connection page shows status, token expiry, and reconnect.
+
+3) **Listing Composer**
+   - Form: title, description, price, condition, category, quantity, images.
+   - AI assist endpoints: `/ai/title` and `/ai/description` (stub; interface to swap model later).
+   - Background removal endpoint `POST /media/remove-bg` (stub with “passthrough” default).
+
+4) **Bulk Cross-Post Queue**
+   - Create jobs per marketplace; persist job state; retries with exponential backoff; idempotency key per listing+marketplace.
+   - Worker emits progress events; UI dashboard shows per-job status (queued, running, posted, failed, needs-action).
+
+5) **Inventory Sync**
+   - On sale webhook/callback (API mode): mark listing as sold; enqueue delist jobs on other marketplaces.
+   - Manual “mark sold” fallback.
+
+6) **Billing & Limits**
+   - Free tier: 50 images storage, 25 listing posts/month.
+   - Pro tier: higher caps.
+   - Enforce limits in middleware; Stripe Checkout for upgrade; Stripe webhooks to set plan.
+
+# Architecture
+- Monorepo structure:
+  - `apps/web` (Next.js App Router; server actions; UI)
+  - `apps/worker` (BullMQ worker)
+  - `packages/core` (domain models, marketplace SDK interfaces, validation schemas)
+  - `packages/db` (Prisma schema + migrations targeting Supabase Postgres)
+  - `packages/queue` (BullMQ setup, reusable job definitions)
+- Entities: User, Connection, ListingDraft, ListingPost, MarketplaceAccount, Job, Plan, Subscription, MediaAsset, AuditLog.
+
+# Integrations – Interfaces
+- Define a `MarketplaceClient` interface:
+  - `createListing(draft) -> { externalId, url }`
+  - `updateListing(id, patch)`
+  - `delist(id)`
+  - `getAuthUrl()` / `exchangeToken(code)` / `refreshToken()`
+- Provide `ebayClient` (API), `poshmarkClient` (stub, future API), `mercariClient` (stub).
+- Provide `headlessClient` (Playwright) implementing same interface but behind feature flag and NOT used by default.
+
+# Job system
+- Use BullMQ with Redis. Queues: `post-listing`, `delist-listing`, `sync-inventory`, `media-process`.
+- Each job writes to `AuditLog` with correlation IDs. Include retry, backoff, dead-letter behavior.
+- Provide a small admin page to view queue depths and job errors.
+
+# Data & media
+- Use Prisma with Supabase Postgres.
+- Use Supabase Storage buckets for images. Add simple signed URL handling and thumbnailing strategy. :contentReference[oaicite:8]{index=8}
+
+# Payments
+- Implement Stripe Checkout for subscriptions, customer portal link, and webhook handlers for subscription lifecycle. Provide `.md` runbook for test cards & flows. :contentReference[oaicite:9]{index=9}
+
+# Testing
+- Unit tests for `MarketplaceClient` interface and job runners.
+- Playwright test for the listing composer & dashboard flows. :contentReference[oaicite:10]{index=10}
+- Provide seed data + an end-to-end script that posts a test listing to a sandbox marketplace environment.
+
+# Compliance & guardrails
+- Store OAuth tokens encrypted; never log tokens.
+- Robots.txt and clear disclaimer: “APIs-only mode by default; headless automation must comply with each marketplace’s ToS.”
+- Feature flag `HEADLESS_AUTOMATION_ENABLED=false` by default.
+
+# Setup tasks for you (the Agent)
+1) Create the monorepo with the above structure and TypeScript configs.
+2) Implement the Prisma schema and migrations; add seed script.
+3) Scaffold Next.js App Router UI with:
+   - `/connections`, `/compose`, `/queue`, `/billing`, `/settings`
+   - Reusable components for listing forms, image uploader, and status table.
+4) Implement BullMQ setup and a separate `apps/worker` that can run independently.
+5) Create `MarketplaceClient` interface + `ebayClient` (real), `poshmarkClient`/`mercariClient` (stubs), and `headlessClient` (Playwright adapter, gated).
+6) Implement Stripe subscription flow (Checkout session creation, webhooks).
+7) Wire Supabase Storage for image upload via signed URLs; include thumbnail generation worker.
+8) Add tests (unit + Playwright) and a GitHub-style CI config you can run locally.
+9) Add a README with:
+   - Required **Replit Secrets**: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `REDIS_URL`, `AI_API_KEY` (if used).
+   - How to run locally and how to **Deploy on Replit** (web app + worker). :contentReference[oaicite:11]{index=11}
+10) Provide seed scripts and a demo walkthrough: connect eBay sandbox, compose a sample listing, post to 1 marketplace, see job status.
+
+# Commands & scripts
+- `pnpm dev:web` – Next.js dev server
+- `pnpm dev:worker` – start BullMQ worker
+- `pnpm db:migrate && pnpm db:seed`
+- `pnpm test` – run unit tests
+- `pnpm test:e2e` – run Playwright tests
+- `pnpm deploy:web` – output steps/instructions for Replit Deployment
+- `pnpm deploy:worker` – output steps/instructions for deploying the worker as a Replit Service
+
+# Acceptance criteria (must pass before you stop)
+- I can connect eBay sandbox and successfully post 1 listing end-to-end via API.
+- Queue dashboard shows job lifecycle and errors.
+- Inventory sync marks items sold and enqueues delist jobs.
+- Billing gates: Free vs Pro limits enforced; Stripe test upgrade downgrades correctly.
+- All secrets configurable via Replit Secrets. No secrets in code.
+- README documents deploy steps and ToS guardrails; headless automation disabled by default.
+
+# Stretch (only if core passes)
+- CSV import for bulk drafts.
+- Simple analytics (posts by marketplace, success rate).
+- Webhooks for real-time status updates to the UI.
+
+Now generate the codebase, tests, and README; then print a checklist of environment variables to set in Replit Secrets and provide step-by-step deploy instructions for Replit Deployments (web + worker).
