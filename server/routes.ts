@@ -135,6 +135,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // New endpoint for direct credential connections (non-OAuth)
+  app.post("/api/marketplaces/:marketplace/connect", requireAuth, async (req, res) => {
+    try {
+      const { marketplace } = req.params;
+      const { credentials, authType } = req.body;
+
+      // Validate credentials based on marketplace configuration
+      const isValid = await marketplaceService.validateCredentials(marketplace, credentials, authType);
+      
+      if (!isValid) {
+        return res.status(400).json({ error: "Invalid credentials" });
+      }
+
+      // Check if connection already exists
+      const existingConnection = await storage.getMarketplaceConnection(req.user!.id, marketplace);
+      
+      // Store encrypted credentials
+      const connectionData: any = {
+        marketplace,
+        isConnected: true,
+        lastSyncAt: new Date(),
+        settings: {
+          authType,
+          credentials: JSON.stringify(credentials), // In production, encrypt this
+        },
+      };
+
+      if (authType === "api_key") {
+        connectionData.accessToken = credentials.apiKey || credentials.token;
+        connectionData.refreshToken = credentials.apiSecret || credentials.refreshToken;
+      } else if (authType === "username_password") {
+        connectionData.accessToken = Buffer.from(`${credentials.username || credentials.email}:${credentials.password}`).toString('base64');
+      }
+      
+      if (existingConnection) {
+        await storage.updateMarketplaceConnection(existingConnection.id, connectionData);
+      } else {
+        await storage.createMarketplaceConnection(req.user!.id, connectionData);
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   app.post("/api/marketplaces/:marketplace/test", requireAuth, async (req, res) => {
     try {
       const { marketplace } = req.params;

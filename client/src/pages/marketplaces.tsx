@@ -5,136 +5,45 @@ import { apiRequest } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { MarketplaceConnectionModal } from "@/components/MarketplaceConnectionModal";
+import { 
+  marketplaces, 
+  marketplaceCategories, 
+  getMarketplacesByCategory, 
+  getPopularMarketplaces,
+  type MarketplaceConfig,
+  type MarketplaceCategory 
+} from "@shared/marketplaceConfig";
 import { format } from "date-fns";
-
-const marketplaceInfo = {
-  ebay: {
-    name: "eBay",
-    description: "World's largest online marketplace with billions of buyers",
-    icon: "fab fa-ebay",
-    color: "bg-blue-600",
-    features: ["Auction & Fixed Price", "Global Reach", "Seller Protection"],
-  },
-  poshmark: {
-    name: "Poshmark",
-    description: "Social marketplace for fashion and lifestyle items",
-    icon: "fas fa-tshirt",
-    color: "bg-pink-500",
-    features: ["Fashion Focus", "Social Features", "Authentication Service"],
-  },
-  mercari: {
-    name: "Mercari",
-    description: "Mobile marketplace for buying and selling anything",
-    icon: "fas fa-shopping-bag",
-    color: "bg-orange-500",
-    features: ["Mobile First", "Easy Selling", "Buyer Protection"],
-  },
-  facebook: {
-    name: "Facebook Marketplace",
-    description: "Local and shipping marketplace on Facebook",
-    icon: "fab fa-facebook",
-    color: "bg-blue-600",
-    features: ["Local Sales", "Social Integration", "No Fees"],
-  },
-  etsy: {
-    name: "Etsy",
-    description: "Marketplace for handmade, vintage, and creative goods",
-    icon: "fab fa-etsy",
-    color: "bg-orange-600",
-    features: ["Handmade Focus", "Creative Community", "Custom Orders"],
-  },
-  depop: {
-    name: "Depop",
-    description: "Fashion marketplace popular with Gen Z",
-    icon: "fas fa-mobile-alt",
-    color: "bg-purple-500",
-    features: ["Fashion Focus", "Young Audience", "Social Discovery"],
-  },
-  grailed: {
-    name: "Grailed",
-    description: "Marketplace for men's designer fashion",
-    icon: "fas fa-user-tie",
-    color: "bg-gray-800",
-    features: ["Designer Focus", "Authentication", "Curated Selection"],
-  },
-  vinted: {
-    name: "Vinted",
-    description: "Platform for secondhand clothes",
-    icon: "fas fa-recycle",
-    color: "bg-green-600",
-    features: ["Secondhand Focus", "No Selling Fees", "Buyer Protection"],
-  },
-};
+import { Search, Check, X, AlertCircle, ArrowRight, Sparkles, Clock } from "lucide-react";
 
 export default function Marketplaces() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [connectingMarketplace, setConnectingMarketplace] = useState<string | null>(null);
+  const [selectedMarketplace, setSelectedMarketplace] = useState<MarketplaceConfig | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<"all" | "popular" | MarketplaceCategory>("popular");
 
-  const { data: marketplaces = [], isLoading } = useQuery({
+  const { data: connections = [], isLoading } = useQuery({
     queryKey: ['/api/marketplaces'],
     enabled: !!user,
   });
 
-  const getAuthUrlMutation = useMutation({
-    mutationFn: async (marketplace: string) => {
-      const response = await apiRequest("GET", `/api/marketplaces/${marketplace}/auth`);
+  const disconnectMutation = useMutation({
+    mutationFn: async (marketplaceId: string) => {
+      const response = await apiRequest("DELETE", `/api/marketplaces/${marketplaceId}`);
       return response.json();
     },
-    onSuccess: (data, marketplace) => {
-      if (data.authUrl) {
-        // For real APIs, this would redirect to the marketplace OAuth page
-        // For now, we'll simulate the connection
-        window.open(data.authUrl, '_blank', 'width=600,height=600');
-        toast({
-          title: "Authentication started",
-          description: `Please complete authentication in the new window for ${marketplace}.`,
-        });
-      }
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error starting authentication",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const connectMarketplaceMutation = useMutation({
-    mutationFn: async ({ marketplace, code }: { marketplace: string; code: string }) => {
-      const response = await apiRequest("POST", `/api/marketplaces/${marketplace}/callback`, { code });
-      return response.json();
-    },
-    onSuccess: (data, variables) => {
-      toast({
-        title: "Marketplace connected",
-        description: `Successfully connected to ${variables.marketplace}.`,
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/marketplaces'] });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Connection failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const disconnectMarketplaceMutation = useMutation({
-    mutationFn: async (marketplace: string) => {
-      const response = await apiRequest("DELETE", `/api/marketplaces/${marketplace}`);
-      return response.json();
-    },
-    onSuccess: (data, marketplace) => {
+    onSuccess: (data, marketplaceId) => {
       toast({
         title: "Marketplace disconnected",
-        description: `Successfully disconnected from ${marketplace}.`,
+        description: `Successfully disconnected from ${marketplaces[marketplaceId]?.name}.`,
       });
       queryClient.invalidateQueries({ queryKey: ['/api/marketplaces'] });
     },
@@ -148,14 +57,14 @@ export default function Marketplaces() {
   });
 
   const testConnectionMutation = useMutation({
-    mutationFn: async (marketplace: string) => {
-      const response = await apiRequest("POST", `/api/marketplaces/${marketplace}/test`);
+    mutationFn: async (marketplaceId: string) => {
+      const response = await apiRequest("POST", `/api/marketplaces/${marketplaceId}/test`);
       return response.json();
     },
-    onSuccess: (data, marketplace) => {
+    onSuccess: (data, marketplaceId) => {
       toast({
         title: "Connection test",
-        description: `${marketplace} connection is ${data.isValid ? 'working' : 'not working'}.`,
+        description: `${marketplaces[marketplaceId]?.name} connection is ${data.isValid ? 'working' : 'not working'}.`,
         variant: data.isValid ? "default" : "destructive",
       });
     },
@@ -168,272 +77,283 @@ export default function Marketplaces() {
     },
   });
 
-  const handleConnect = async (marketplace: string) => {
-    setConnectingMarketplace(marketplace);
-    try {
-      if (marketplace === 'ebay') {
-        // For eBay, start OAuth flow
-        await getAuthUrlMutation.mutateAsync(marketplace);
-        // Simulate successful connection for demo
-        setTimeout(() => {
-          connectMarketplaceMutation.mutate({ 
-            marketplace, 
-            code: `demo_code_${Date.now()}` 
-          });
-          setConnectingMarketplace(null);
-        }, 2000);
-      } else {
-        // For other marketplaces, simulate connection
-        await connectMarketplaceMutation.mutateAsync({ 
-          marketplace, 
-          code: `demo_code_${Date.now()}` 
-        });
-        setConnectingMarketplace(null);
-      }
-    } catch (error) {
-      setConnectingMarketplace(null);
+  const handleConnect = (marketplace: MarketplaceConfig) => {
+    setSelectedMarketplace(marketplace);
+    setIsModalOpen(true);
+  };
+
+  const handleDisconnect = async (marketplaceId: string) => {
+    if (confirm(`Are you sure you want to disconnect from ${marketplaces[marketplaceId]?.name}?`)) {
+      await disconnectMutation.mutateAsync(marketplaceId);
     }
   };
 
-  const handleDisconnect = (marketplace: string) => {
-    disconnectMarketplaceMutation.mutate(marketplace);
+  const isConnected = (marketplaceId: string) => {
+    return connections.find((c: any) => c.marketplace === marketplaceId && c.isConnected);
   };
 
-  const handleTestConnection = (marketplace: string) => {
-    testConnectionMutation.mutate(marketplace);
+  const getConnectionInfo = (marketplaceId: string) => {
+    return connections.find((c: any) => c.marketplace === marketplaceId);
   };
 
-  const getMarketplaceData = (marketplace: any) => {
-    const info = marketplaceInfo[marketplace.marketplace as keyof typeof marketplaceInfo];
-    return {
-      ...marketplace,
-      ...info,
-    };
+  const getFilteredMarketplaces = (): MarketplaceConfig[] => {
+    let filtered: MarketplaceConfig[] = [];
+    
+    if (activeTab === "all") {
+      filtered = Object.values(marketplaces);
+    } else if (activeTab === "popular") {
+      filtered = getPopularMarketplaces();
+    } else {
+      filtered = getMarketplacesByCategory(activeTab as MarketplaceCategory);
+    }
+
+    if (searchQuery) {
+      filtered = filtered.filter(m => 
+        m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        m.description.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    return filtered;
+  };
+
+  const renderMarketplaceCard = (marketplace: MarketplaceConfig) => {
+    const connected = isConnected(marketplace.id);
+    const connectionInfo = getConnectionInfo(marketplace.id);
+    
+    return (
+      <Card 
+        key={marketplace.id} 
+        className="relative overflow-hidden hover:shadow-lg transition-shadow"
+        data-testid={`card-marketplace-${marketplace.id}`}
+      >
+        {marketplace.comingSoon && (
+          <div className="absolute top-2 right-2 z-10">
+            <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+              <Clock className="w-3 h-3 mr-1" />
+              Coming Soon
+            </Badge>
+          </div>
+        )}
+        
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`${marketplace.color} text-white p-3 rounded-lg`}>
+                <i className={`${marketplace.icon} text-xl`}></i>
+              </div>
+              <div>
+                <CardTitle className="text-lg">{marketplace.name}</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {marketplace.description}
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        
+        <CardContent className="space-y-4">
+          {/* Features */}
+          <div className="flex flex-wrap gap-1.5">
+            {marketplace.features.slice(0, 3).map((feature) => (
+              <Badge key={feature} variant="secondary" className="text-xs">
+                {feature}
+              </Badge>
+            ))}
+          </div>
+
+          {/* Connection Status */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {connected ? (
+                <>
+                  <Check className="w-4 h-4 text-green-500" />
+                  <span className="text-sm text-green-600 font-medium">Connected</span>
+                </>
+              ) : (
+                <>
+                  <X className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-muted-foreground">Not connected</span>
+                </>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-1">
+              {marketplace.apiAvailable && (
+                <Badge variant="outline" className="text-xs">
+                  API
+                </Badge>
+              )}
+              <Badge variant="outline" className="text-xs">
+                {marketplace.authType.replace('_', ' ')}
+              </Badge>
+            </div>
+          </div>
+
+          {/* Last Sync Info */}
+          {connected && connectionInfo?.lastSyncAt && (
+            <div className="text-xs text-muted-foreground">
+              Last synced: {format(new Date(connectionInfo.lastSyncAt), "MMM d, h:mm a")}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-2">
+            {connected ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => testConnectionMutation.mutate(marketplace.id)}
+                  data-testid={`button-test-${marketplace.id}`}
+                >
+                  Test Connection
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1 text-red-600 hover:text-red-700"
+                  onClick={() => handleDisconnect(marketplace.id)}
+                  data-testid={`button-disconnect-${marketplace.id}`}
+                >
+                  Disconnect
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                className="w-full"
+                onClick={() => handleConnect(marketplace)}
+                disabled={marketplace.comingSoon}
+                data-testid={`button-connect-${marketplace.id}`}
+              >
+                {marketplace.comingSoon ? (
+                  "Coming Soon"
+                ) : (
+                  <>
+                    Connect
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
   };
 
   if (isLoading) {
     return (
-      <div className="p-4 sm:p-6 lg:p-8">
-        <div className="flex items-center justify-center min-h-64">
-          <i className="fas fa-spinner fa-spin text-2xl text-muted-foreground"></i>
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading marketplaces...</p>
         </div>
       </div>
     );
   }
 
-  const connectedCount = marketplaces.filter((m: any) => m.isConnected).length;
+  const connectedCount = connections.filter((c: any) => c.isConnected).length;
+  const totalCount = Object.keys(marketplaces).length;
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground">Marketplaces</h1>
-        <p className="text-muted-foreground mt-2">
-          Connect your accounts to post listings across multiple platforms
-        </p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-page-title">Marketplace Connections</h1>
+            <p className="text-muted-foreground mt-1">
+              Connect your accounts to crosslist items across multiple platforms
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-2xl font-bold">{connectedCount}/{totalCount}</p>
+            <p className="text-sm text-muted-foreground">Connected</p>
+          </div>
+        </div>
+
+        {/* Stats Alert */}
+        {connectedCount === 0 && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Connect at least one marketplace to start crosslisting your items. 
+              We recommend starting with popular platforms like eBay, Poshmark, or Mercari.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Search Bar */}
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+          <Input
+            placeholder="Search marketplaces..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+            data-testid="input-search"
+          />
+        </div>
       </div>
 
-      {/* Summary */}
-      <Card className="mb-8">
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-foreground" data-testid="text-connected-count">
-                {connectedCount}
-              </div>
-              <p className="text-sm text-muted-foreground">Connected</p>
+      {/* Category Tabs */}
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)}>
+        <TabsList className="grid grid-cols-5 lg:grid-cols-11 h-auto p-1">
+          <TabsTrigger value="popular" className="flex items-center gap-1">
+            <Sparkles className="w-3 h-3" />
+            Popular
+          </TabsTrigger>
+          <TabsTrigger value="all">All</TabsTrigger>
+          {Object.entries(marketplaceCategories).map(([key, category]) => (
+            <TabsTrigger key={key} value={key} className="text-xs">
+              <i className={`${category.icon} mr-1`}></i>
+              <span className="hidden lg:inline">{category.name.split(' ')[0]}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value={activeTab} className="mt-6">
+          {activeTab !== "all" && activeTab !== "popular" && (
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <i className={marketplaceCategories[activeTab as MarketplaceCategory].icon}></i>
+                {marketplaceCategories[activeTab as MarketplaceCategory].name}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                {marketplaceCategories[activeTab as MarketplaceCategory].description}
+              </p>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-foreground" data-testid="text-available-count">
-                {marketplaces.length}
-              </div>
-              <p className="text-sm text-muted-foreground">Available</p>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-primary" data-testid="text-success-rate">
-                {connectedCount > 0 ? '100%' : '0%'}
-              </div>
-              <p className="text-sm text-muted-foreground">Success Rate</p>
-            </div>
+          )}
+
+          {/* Marketplace Grid */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {getFilteredMarketplaces().map(renderMarketplaceCard)}
           </div>
-        </CardContent>
-      </Card>
 
-      {connectedCount === 0 && (
-        <Alert className="mb-6">
-          <i className="fas fa-info-circle h-4 w-4"></i>
-          <AlertDescription>
-            Connect at least one marketplace to start crosslisting your products. 
-            Each connection allows you to automatically post listings to that platform.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Marketplace Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {marketplaces.map((marketplace: any) => {
-          const data = getMarketplaceData(marketplace);
-          const isConnecting = connectingMarketplace === marketplace.marketplace;
-          
-          return (
-            <Card key={marketplace.marketplace} className="relative overflow-hidden">
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-10 h-10 ${data.color} rounded-lg flex items-center justify-center`}>
-                      <i className={`${data.icon} text-white text-lg`}></i>
-                    </div>
-                    <div>
-                      <CardTitle className="text-lg">{data.name}</CardTitle>
-                      <div className="flex items-center space-x-2 mt-1">
-                        <Badge
-                          className={marketplace.isConnected
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
-                            : 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-                          }
-                        >
-                          {marketplace.isConnected ? 'Connected' : 'Not Connected'}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {marketplace.isConnected && (
-                    <Switch
-                      checked={marketplace.isConnected}
-                      onCheckedChange={() => handleDisconnect(marketplace.marketplace)}
-                      disabled={disconnectMarketplaceMutation.isPending}
-                      data-testid={`switch-${marketplace.marketplace}`}
-                    />
-                  )}
-                </div>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  {data.description}
-                </p>
-
-                {data.features && (
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">Key Features:</h4>
-                    <ul className="text-xs text-muted-foreground space-y-1">
-                      {data.features.map((feature: string, index: number) => (
-                        <li key={index} className="flex items-center">
-                          <i className="fas fa-check text-green-500 mr-2 text-xs"></i>
-                          {feature}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {marketplace.isConnected && marketplace.connection && (
-                  <div className="text-xs text-muted-foreground">
-                    <p>
-                      Last sync: {marketplace.lastSyncAt 
-                        ? format(new Date(marketplace.lastSyncAt), 'MMM d, h:mm a')
-                        : 'Never'
-                      }
-                    </p>
-                  </div>
-                )}
-
-                <div className="flex space-x-2">
-                  {!marketplace.isConnected ? (
-                    <Button
-                      onClick={() => handleConnect(marketplace.marketplace)}
-                      disabled={isConnecting || connectMarketplaceMutation.isPending}
-                      className="flex-1"
-                      data-testid={`button-connect-${marketplace.marketplace}`}
-                    >
-                      {isConnecting ? (
-                        <>
-                          <i className="fas fa-spinner fa-spin mr-2"></i>
-                          Connecting...
-                        </>
-                      ) : (
-                        <>
-                          <i className="fas fa-link mr-2"></i>
-                          Connect
-                        </>
-                      )}
-                    </Button>
-                  ) : (
-                    <>
-                      <Button
-                        variant="outline"
-                        onClick={() => handleTestConnection(marketplace.marketplace)}
-                        disabled={testConnectionMutation.isPending}
-                        className="flex-1"
-                        data-testid={`button-test-${marketplace.marketplace}`}
-                      >
-                        {testConnectionMutation.isPending ? (
-                          <>
-                            <i className="fas fa-spinner fa-spin mr-2"></i>
-                            Testing...
-                          </>
-                        ) : (
-                          <>
-                            <i className="fas fa-check mr-2"></i>
-                            Test
-                          </>
-                        )}
-                      </Button>
-                      
-                      <Button
-                        variant="outline"
-                        onClick={() => handleDisconnect(marketplace.marketplace)}
-                        disabled={disconnectMarketplaceMutation.isPending}
-                        data-testid={`button-disconnect-${marketplace.marketplace}`}
-                      >
-                        <i className="fas fa-unlink"></i>
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </CardContent>
-
-              {isConnecting && (
-                <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center">
-                  <div className="text-center">
-                    <i className="fas fa-spinner fa-spin text-2xl text-primary mb-2"></i>
-                    <p className="text-sm text-muted-foreground">Connecting...</p>
-                  </div>
-                </div>
-              )}
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Connection Tips */}
-      <Card className="mt-8">
-        <CardHeader>
-          <CardTitle>Connection Tips</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h4 className="font-medium mb-2">Before Connecting:</h4>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Ensure you have seller accounts on each marketplace</li>
-                <li>• Have your login credentials ready</li>
-                <li>• Check marketplace-specific requirements</li>
-                <li>• Review fee structures and policies</li>
-              </ul>
+          {getFilteredMarketplaces().length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">
+                {searchQuery 
+                  ? `No marketplaces found matching "${searchQuery}"`
+                  : "No marketplaces available in this category"}
+              </p>
             </div>
-            <div>
-              <h4 className="font-medium mb-2">After Connecting:</h4>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Test the connection regularly</li>
-                <li>• Monitor posting success rates</li>
-                <li>• Keep account credentials updated</li>
-                <li>• Review marketplace analytics</li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Connection Modal */}
+      <MarketplaceConnectionModal
+        marketplace={selectedMarketplace}
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedMarketplace(null);
+        }}
+      />
     </div>
   );
 }
