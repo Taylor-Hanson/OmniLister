@@ -7,8 +7,9 @@ import { aiService } from "./services/aiService";
 import { marketplaceService } from "./services/marketplaceService";
 import { queueService } from "./services/queueService";
 import { syncService } from "./services/syncService";
+import { autoDelistService } from "./services/autoDelistService";
 import { requireAuth, optionalAuth, requirePlan } from "./middleware/auth";
-import { insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema, insertSyncSettingsSchema, insertSyncRuleSchema } from "@shared/schema";
+import { insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema, insertSyncSettingsSchema, insertSyncRuleSchema, insertAutoDelistRuleSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
 
 // Stripe client - only initialized if API key is available
@@ -761,6 +762,135 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { limit } = req.query;
       const logs = await storage.getAuditLogs(req.user!.id, limit ? parseInt(limit as string) : undefined);
       res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Auto-Delist endpoints
+  app.get("/api/auto-delist/rules", requireAuth, async (req, res) => {
+    try {
+      const rules = await storage.getAutoDelistRules(req.user!.id);
+      res.json(rules);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/auto-delist/rules", requireAuth, async (req, res) => {
+    try {
+      const ruleData = insertAutoDelistRuleSchema.parse(req.body);
+      const rule = await storage.createAutoDelistRule(req.user!.id, ruleData);
+      
+      // Create audit log
+      await storage.createAuditLog({
+        userId: req.user!.id,
+        action: "create_auto_delist_rule",
+        entityType: "auto_delist_rule",
+        entityId: rule.id,
+        metadata: { name: rule.name },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent") || null,
+      });
+      
+      res.json(rule);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.patch("/api/auto-delist/rules/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rule = await storage.getAutoDelistRule(id);
+      
+      if (!rule || rule.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Rule not found" });
+      }
+      
+      const updatedRule = await storage.updateAutoDelistRule(id, req.body);
+      
+      // Create audit log
+      await storage.createAuditLog({
+        userId: req.user!.id,
+        action: "update_auto_delist_rule",
+        entityType: "auto_delist_rule",
+        entityId: id,
+        metadata: { changes: req.body },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent") || null,
+      });
+      
+      res.json(updatedRule);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/auto-delist/rules/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rule = await storage.getAutoDelistRule(id);
+      
+      if (!rule || rule.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Rule not found" });
+      }
+      
+      await storage.deleteAutoDelistRule(id);
+      
+      // Create audit log
+      await storage.createAuditLog({
+        userId: req.user!.id,
+        action: "delete_auto_delist_rule",
+        entityType: "auto_delist_rule",
+        entityId: id,
+        metadata: { name: rule.name },
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent") || null,
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/auto-delist/history", requireAuth, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 100;
+      const history = await storage.getAutoDelistHistory(req.user!.id, limit);
+      res.json(history);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/auto-delist/trigger/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await autoDelistService.triggerRule(req.user!.id, id);
+      
+      // Create audit log
+      await storage.createAuditLog({
+        userId: req.user!.id,
+        action: "manual_trigger_auto_delist",
+        entityType: "auto_delist_rule",
+        entityId: id,
+        metadata: {},
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent") || null,
+      });
+      
+      res.json({ success: true, message: "Rule triggered successfully" });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/auto-delist/stats", requireAuth, async (req, res) => {
+    try {
+      const stats = await autoDelistService.getStats(req.user!.id);
+      res.json(stats);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

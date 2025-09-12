@@ -156,6 +156,32 @@ export const syncConflicts = pgTable("sync_conflicts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Auto-Delist Rules
+export const autoDelistRules = pgTable("auto_delist_rules", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  enabled: boolean("enabled").default(true),
+  trigger: text("trigger").notNull(), // time_based, inventory_based, date_based
+  triggerValue: jsonb("trigger_value").notNull(), // { days: 30 } for time_based, { quantity: 0 } for inventory_based, { date: "2024-12-31" } for date_based
+  marketplaces: text("marketplaces").array(), // null for all marketplaces
+  listingIds: uuid("listing_ids").array(), // null for all listings
+  lastExecutedAt: timestamp("last_executed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Auto-Delist History
+export const autoDelistHistory = pgTable("auto_delist_history", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  ruleId: uuid("rule_id").references(() => autoDelistRules.id, { onDelete: "set null" }),
+  listingId: uuid("listing_id").references(() => listings.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace").notNull(),
+  reason: text("reason").notNull(),
+  delistedAt: timestamp("delisted_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,
@@ -236,6 +262,22 @@ export const insertSyncConflictSchema = createInsertSchema(syncConflicts).pick({
   targetValue: true,
 });
 
+export const insertAutoDelistRuleSchema = createInsertSchema(autoDelistRules).pick({
+  name: true,
+  enabled: true,
+  trigger: true,
+  triggerValue: true,
+  marketplaces: true,
+  listingIds: true,
+});
+
+export const insertAutoDelistHistorySchema = createInsertSchema(autoDelistHistory).pick({
+  ruleId: true,
+  listingId: true,
+  marketplace: true,
+  reason: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -256,3 +298,7 @@ export type SyncHistory = typeof syncHistory.$inferSelect;
 export type InsertSyncHistory = z.infer<typeof insertSyncHistorySchema>;
 export type SyncConflict = typeof syncConflicts.$inferSelect;
 export type InsertSyncConflict = z.infer<typeof insertSyncConflictSchema>;
+export type AutoDelistRule = typeof autoDelistRules.$inferSelect;
+export type InsertAutoDelistRule = z.infer<typeof insertAutoDelistRuleSchema>;
+export type AutoDelistHistory = typeof autoDelistHistory.$inferSelect;
+export type InsertAutoDelistHistory = z.infer<typeof insertAutoDelistHistorySchema>;

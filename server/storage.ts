@@ -8,7 +8,9 @@ import {
   type SyncSettings, type InsertSyncSettings,
   type SyncRule, type InsertSyncRule,
   type SyncHistory, type InsertSyncHistory,
-  type SyncConflict, type InsertSyncConflict
+  type SyncConflict, type InsertSyncConflict,
+  type AutoDelistRule, type InsertAutoDelistRule,
+  type AutoDelistHistory, type InsertAutoDelistHistory
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -80,6 +82,17 @@ export interface IStorage {
   getSyncConflict(id: string): Promise<SyncConflict | undefined>;
   createSyncConflict(userId: string, conflict: InsertSyncConflict): Promise<SyncConflict>;
   resolveSyncConflict(id: string, resolution: string, resolvedValue: any): Promise<SyncConflict>;
+
+  // Auto-Delist Rule methods
+  getAutoDelistRules(userId: string): Promise<AutoDelistRule[]>;
+  getAutoDelistRule(id: string): Promise<AutoDelistRule | undefined>;
+  createAutoDelistRule(userId: string, rule: InsertAutoDelistRule): Promise<AutoDelistRule>;
+  updateAutoDelistRule(id: string, updates: Partial<AutoDelistRule>): Promise<AutoDelistRule>;
+  deleteAutoDelistRule(id: string): Promise<void>;
+
+  // Auto-Delist History methods
+  getAutoDelistHistory(userId: string, limit?: number): Promise<AutoDelistHistory[]>;
+  createAutoDelistHistory(userId: string, history: InsertAutoDelistHistory): Promise<AutoDelistHistory>;
 }
 
 export class MemStorage implements IStorage {
@@ -93,6 +106,8 @@ export class MemStorage implements IStorage {
   private syncRules: Map<string, SyncRule> = new Map();
   private syncHistory: Map<string, SyncHistory> = new Map();
   private syncConflicts: Map<string, SyncConflict> = new Map();
+  private autoDelistRules: Map<string, AutoDelistRule> = new Map();
+  private autoDelistHistory: Map<string, AutoDelistHistory> = new Map();
 
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
@@ -473,6 +488,67 @@ export class MemStorage implements IStorage {
     };
     this.syncConflicts.set(id, resolvedConflict);
     return resolvedConflict;
+  }
+
+  // Auto-Delist Rule methods
+  async getAutoDelistRules(userId: string): Promise<AutoDelistRule[]> {
+    return Array.from(this.autoDelistRules.values()).filter(rule => rule.userId === userId);
+  }
+
+  async getAutoDelistRule(id: string): Promise<AutoDelistRule | undefined> {
+    return this.autoDelistRules.get(id);
+  }
+
+  async createAutoDelistRule(userId: string, insertRule: InsertAutoDelistRule): Promise<AutoDelistRule> {
+    const id = randomUUID();
+    const rule: AutoDelistRule = {
+      ...insertRule,
+      id,
+      userId,
+      lastExecutedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.autoDelistRules.set(id, rule);
+    return rule;
+  }
+
+  async updateAutoDelistRule(id: string, updates: Partial<AutoDelistRule>): Promise<AutoDelistRule> {
+    const rule = this.autoDelistRules.get(id);
+    if (!rule) throw new Error("Auto-delist rule not found");
+    
+    const updatedRule = {
+      ...rule,
+      ...updates,
+      updatedAt: new Date(),
+    };
+    this.autoDelistRules.set(id, updatedRule);
+    return updatedRule;
+  }
+
+  async deleteAutoDelistRule(id: string): Promise<void> {
+    this.autoDelistRules.delete(id);
+  }
+
+  // Auto-Delist History methods
+  async getAutoDelistHistory(userId: string, limit: number = 100): Promise<AutoDelistHistory[]> {
+    const history = Array.from(this.autoDelistHistory.values())
+      .filter(h => h.userId === userId)
+      .sort((a, b) => b.delistedAt.getTime() - a.delistedAt.getTime());
+    
+    return limit ? history.slice(0, limit) : history;
+  }
+
+  async createAutoDelistHistory(userId: string, insertHistory: InsertAutoDelistHistory): Promise<AutoDelistHistory> {
+    const id = randomUUID();
+    const history: AutoDelistHistory = {
+      ...insertHistory,
+      id,
+      userId,
+      delistedAt: new Date(),
+    };
+    this.autoDelistHistory.set(id, history);
+    return history;
   }
 }
 
