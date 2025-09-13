@@ -159,6 +159,38 @@ export interface IStorage {
   createQueueDistribution(distribution: InsertQueueDistribution): Promise<QueueDistribution>;
   updateQueueDistribution(id: string, updates: Partial<QueueDistribution>): Promise<QueueDistribution>;
   getAvailableTimeSlots(marketplace: string, startTime: Date, endTime: Date): Promise<QueueDistribution[]>;
+
+  // Job Retry History methods
+  createJobRetryHistory(history: InsertJobRetryHistory): Promise<JobRetryHistory>;
+  getJobRetryHistory(jobId: string): Promise<JobRetryHistory[]>;
+
+  // Circuit Breaker methods
+  getCircuitBreakerStatus(marketplace: string): Promise<CircuitBreakerStatus | undefined>;
+  updateCircuitBreaker(marketplace: string, updates: Partial<CircuitBreakerStatus>): Promise<CircuitBreakerStatus>;
+  getAllCircuitBreakerStatuses(): Promise<CircuitBreakerStatus[]>;
+  createCircuitBreakerStatus(status: InsertCircuitBreakerStatus): Promise<CircuitBreakerStatus>;
+
+  // Dead Letter Queue methods
+  getDeadLetterQueueEntries(userId?: string, filters?: { resolutionStatus?: string; requiresManualReview?: boolean }): Promise<DeadLetterQueue[]>;
+  createDeadLetterQueue(entry: InsertDeadLetterQueue): Promise<DeadLetterQueue>;
+  updateDeadLetterQueueEntry(id: string, updates: Partial<DeadLetterQueue>): Promise<DeadLetterQueue>;
+  getDeadLetterQueueStats(userId?: string): Promise<{ total: number; pending: number; resolved: number; requiresReview: number }>;
+  cleanupOldEntries(olderThan: Date): Promise<number>;
+
+  // Retry Metrics methods
+  createRetryMetrics(metrics: InsertRetryMetrics): Promise<RetryMetrics>;
+  getRetryMetrics(filters?: { marketplace?: string; jobType?: string; timeWindow?: Date }): Promise<RetryMetrics[]>;
+
+  // Failure Category methods
+  getFailureCategories(): Promise<FailureCategory[]>;
+  getFailureCategory(category: string): Promise<FailureCategory | undefined>;
+  createFailureCategory(category: InsertFailureCategory): Promise<FailureCategory>;
+  updateFailureCategory(id: string, updates: Partial<FailureCategory>): Promise<FailureCategory>;
+
+  // Marketplace Retry Config methods
+  getMarketplaceRetryConfig(marketplace: string): Promise<MarketplaceRetryConfig | undefined>;
+  createMarketplaceRetryConfig(config: InsertMarketplaceRetryConfig): Promise<MarketplaceRetryConfig>;
+  updateMarketplaceRetryConfig(marketplace: string, updates: Partial<MarketplaceRetryConfig>): Promise<MarketplaceRetryConfig>;
 }
 
 export class MemStorage implements IStorage {
@@ -185,6 +217,14 @@ export class MemStorage implements IStorage {
   private postingSuccessAnalytics: Map<string, PostingSuccessAnalytics> = new Map();
   private rateLimitTrackers: Map<string, RateLimitTracker> = new Map();
   private queueDistributions: Map<string, QueueDistribution> = new Map();
+  
+  // Retry System storage
+  private jobRetryHistory: Map<string, JobRetryHistory> = new Map();
+  private circuitBreakerStatus: Map<string, CircuitBreakerStatus> = new Map();
+  private deadLetterQueue: Map<string, DeadLetterQueue> = new Map();
+  private retryMetrics: Map<string, RetryMetrics> = new Map();
+  private failureCategories: Map<string, FailureCategory> = new Map();
+  private marketplaceRetryConfig: Map<string, MarketplaceRetryConfig> = new Map();
 
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
@@ -1078,6 +1118,244 @@ export class MemStorage implements IStorage {
         dist.scheduledJobs < dist.maxCapacity
       )
       .sort((a, b) => a.timeSlot.getTime() - b.timeSlot.getTime());
+  }
+
+  // Job Retry History methods
+  async createJobRetryHistory(history: InsertJobRetryHistory): Promise<JobRetryHistory> {
+    const id = randomUUID();
+    const retryHistory: JobRetryHistory = {
+      ...history,
+      id,
+      timestamp: new Date(),
+    };
+    this.jobRetryHistory.set(id, retryHistory);
+    return retryHistory;
+  }
+
+  async getJobRetryHistory(jobId: string): Promise<JobRetryHistory[]> {
+    return Array.from(this.jobRetryHistory.values())
+      .filter(history => history.jobId === jobId)
+      .sort((a, b) => a.attemptNumber - b.attemptNumber);
+  }
+
+  // Circuit Breaker methods
+  async getCircuitBreakerStatus(marketplace: string): Promise<CircuitBreakerStatus | undefined> {
+    const existing = Array.from(this.circuitBreakerStatus.values()).find(status => status.marketplace === marketplace);
+    if (existing) {
+      return existing;
+    }
+    
+    // Create default circuit breaker status if none exists
+    const defaultStatus: CircuitBreakerStatus = {
+      id: randomUUID(),
+      marketplace,
+      status: "closed",
+      failureCount: 0,
+      successCount: 0,
+      lastFailureAt: null,
+      lastSuccessAt: null,
+      openedAt: null,
+      nextRetryAt: null,
+      failureThreshold: 5,
+      recoveryThreshold: 3,
+      timeoutMs: 60000,
+      halfOpenMaxRequests: 3,
+      currentHalfOpenRequests: 0,
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.circuitBreakerStatus.set(defaultStatus.id, defaultStatus);
+    return defaultStatus;
+  }
+
+  async updateCircuitBreaker(marketplace: string, updates: Partial<CircuitBreakerStatus>): Promise<CircuitBreakerStatus> {
+    const existing = Array.from(this.circuitBreakerStatus.values()).find(status => status.marketplace === marketplace);
+    if (!existing) {
+      throw new Error('Circuit breaker status not found');
+    }
+    const updated = { ...existing, ...updates, updatedAt: new Date() };
+    this.circuitBreakerStatus.set(existing.id, updated);
+    return updated;
+  }
+
+  async getAllCircuitBreakerStatuses(): Promise<CircuitBreakerStatus[]> {
+    return Array.from(this.circuitBreakerStatus.values());
+  }
+
+  async createCircuitBreakerStatus(status: InsertCircuitBreakerStatus): Promise<CircuitBreakerStatus> {
+    const id = randomUUID();
+    const circuitBreaker: CircuitBreakerStatus = {
+      ...status,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.circuitBreakerStatus.set(id, circuitBreaker);
+    return circuitBreaker;
+  }
+
+  // Dead Letter Queue methods
+  async getDeadLetterQueueEntries(userId?: string, filters?: { resolutionStatus?: string; requiresManualReview?: boolean }): Promise<DeadLetterQueue[]> {
+    let entries = Array.from(this.deadLetterQueue.values());
+    
+    if (userId) {
+      entries = entries.filter(entry => entry.userId === userId);
+    }
+    if (filters?.resolutionStatus) {
+      entries = entries.filter(entry => entry.resolutionStatus === filters.resolutionStatus);
+    }
+    if (filters?.requiresManualReview !== undefined) {
+      entries = entries.filter(entry => entry.requiresManualReview === filters.requiresManualReview);
+    }
+    
+    return entries.sort((a, b) => new Date(b.lastFailureAt).getTime() - new Date(a.lastFailureAt).getTime());
+  }
+
+  async createDeadLetterQueue(entry: InsertDeadLetterQueue): Promise<DeadLetterQueue> {
+    const id = randomUUID();
+    const dlqEntry: DeadLetterQueue = {
+      ...entry,
+      id,
+      createdAt: new Date(),
+    };
+    this.deadLetterQueue.set(id, dlqEntry);
+    return dlqEntry;
+  }
+
+  async updateDeadLetterQueueEntry(id: string, updates: Partial<DeadLetterQueue>): Promise<DeadLetterQueue> {
+    const entry = this.deadLetterQueue.get(id);
+    if (!entry) {
+      throw new Error('Dead letter queue entry not found');
+    }
+    const updated = { ...entry, ...updates };
+    this.deadLetterQueue.set(id, updated);
+    return updated;
+  }
+
+  async getDeadLetterQueueStats(userId?: string): Promise<{ total: number; pending: number; resolved: number; requiresReview: number }> {
+    let entries = Array.from(this.deadLetterQueue.values());
+    
+    if (userId) {
+      entries = entries.filter(entry => entry.userId === userId);
+    }
+    
+    return {
+      total: entries.length,
+      pending: entries.filter(entry => entry.resolutionStatus === 'pending').length,
+      resolved: entries.filter(entry => entry.resolutionStatus === 'resolved').length,
+      requiresReview: entries.filter(entry => entry.requiresManualReview).length,
+    };
+  }
+
+  async cleanupOldEntries(olderThan: Date): Promise<number> {
+    const entries = Array.from(this.deadLetterQueue.entries());
+    let deletedCount = 0;
+    
+    for (const [id, entry] of entries) {
+      if (entry.createdAt < olderThan && entry.resolutionStatus === 'resolved') {
+        this.deadLetterQueue.delete(id);
+        deletedCount++;
+      }
+    }
+    
+    return deletedCount;
+  }
+
+  // Retry Metrics methods
+  async createRetryMetrics(metrics: InsertRetryMetrics): Promise<RetryMetrics> {
+    const id = randomUUID();
+    const retryMetrics: RetryMetrics = {
+      ...metrics,
+      id,
+      jobId: metrics.jobId || randomUUID(),
+      attemptNumber: metrics.attemptNumber || 1,
+      outcome: metrics.outcome || "failure",
+      retryDelay: metrics.retryDelay || null,
+      processingTimeMs: metrics.processingTimeMs || null,
+      timestamp: metrics.timestamp || new Date(),
+      metadata: metrics.metadata || {},
+    };
+    this.retryMetrics.set(id, retryMetrics);
+    return retryMetrics;
+  }
+
+  async getRetryMetrics(filters?: { marketplace?: string; jobType?: string; timeWindow?: Date }): Promise<RetryMetrics[]> {
+    let metrics = Array.from(this.retryMetrics.values());
+    
+    if (filters?.marketplace) {
+      metrics = metrics.filter(metric => metric.marketplace === filters.marketplace);
+    }
+    if (filters?.jobType) {
+      metrics = metrics.filter(metric => metric.jobType === filters.jobType);
+    }
+    if (filters?.timeWindow) {
+      const windowStart = new Date(filters.timeWindow);
+      const windowEnd = new Date(windowStart.getTime() + 60 * 60 * 1000); // 1 hour window
+      metrics = metrics.filter(metric => 
+        metric.timestamp >= windowStart && metric.timestamp < windowEnd
+      );
+    }
+    
+    return metrics.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+
+  // Failure Category methods
+  async getFailureCategories(): Promise<FailureCategory[]> {
+    return Array.from(this.failureCategories.values()).filter(category => category.isActive);
+  }
+
+  async getFailureCategory(category: string): Promise<FailureCategory | undefined> {
+    return Array.from(this.failureCategories.values()).find(cat => cat.category === category);
+  }
+
+  async createFailureCategory(category: InsertFailureCategory): Promise<FailureCategory> {
+    const id = randomUUID();
+    const failureCategory: FailureCategory = {
+      ...category,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.failureCategories.set(id, failureCategory);
+    return failureCategory;
+  }
+
+  async updateFailureCategory(id: string, updates: Partial<FailureCategory>): Promise<FailureCategory> {
+    const category = this.failureCategories.get(id);
+    if (!category) {
+      throw new Error('Failure category not found');
+    }
+    const updated = { ...category, ...updates, updatedAt: new Date() };
+    this.failureCategories.set(id, updated);
+    return updated;
+  }
+
+  // Marketplace Retry Config methods
+  async getMarketplaceRetryConfig(marketplace: string): Promise<MarketplaceRetryConfig | undefined> {
+    return Array.from(this.marketplaceRetryConfig.values()).find(config => config.marketplace === marketplace);
+  }
+
+  async createMarketplaceRetryConfig(config: InsertMarketplaceRetryConfig): Promise<MarketplaceRetryConfig> {
+    const id = randomUUID();
+    const retryConfig: MarketplaceRetryConfig = {
+      ...config,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.marketplaceRetryConfig.set(id, retryConfig);
+    return retryConfig;
+  }
+
+  async updateMarketplaceRetryConfig(marketplace: string, updates: Partial<MarketplaceRetryConfig>): Promise<MarketplaceRetryConfig> {
+    const existing = Array.from(this.marketplaceRetryConfig.values()).find(config => config.marketplace === marketplace);
+    if (!existing) {
+      throw new Error('Marketplace retry config not found');
+    }
+    const updated = { ...existing, ...updates, updatedAt: new Date() };
+    this.marketplaceRetryConfig.set(existing.id, updated);
+    return updated;
   }
 }
 

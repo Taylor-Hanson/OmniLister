@@ -1,7 +1,12 @@
-import { type Job, type Listing, type ListingPost, type User } from "@shared/schema";
+import { type Job, type Listing, type ListingPost, type User, type JobRetryHistory } from "@shared/schema";
 import { storage } from "../storage";
 import { marketplaceService } from "./marketplaceService";
 import { smartScheduler } from "./smartScheduler";
+import { retryStrategyService, type RetryContext } from "./retryStrategyService";
+import { circuitBreakerService } from "./circuitBreakerService";
+import { deadLetterQueueService } from "./deadLetterQueueService";
+import { failureCategorizationService } from "./failureCategorizationService";
+import { retryMetricsService } from "./retryMetricsService";
 
 export interface JobProcessor {
   process(job: Job): Promise<void>;
@@ -236,6 +241,29 @@ export class QueueService {
       throw new Error(`No processor found for job type: ${job.type}`);
     }
 
+    // Extract marketplace from job data for circuit breaker check
+    const marketplace = this.extractMarketplaceFromJob(job);
+    
+    // Check circuit breaker before processing
+    if (marketplace) {
+      const circuitBreakerDecision = await circuitBreakerService.shouldAllowRequest(marketplace);
+      if (!circuitBreakerDecision.allowed) {
+        console.warn(`Job ${job.id} blocked by circuit breaker for ${marketplace}: ${circuitBreakerDecision.reason}`);
+        
+        // Schedule retry based on circuit breaker recommendation
+        const nextRetryAt = circuitBreakerDecision.nextRetryAt || new Date(Date.now() + 60000); // 1 minute fallback
+        await storage.updateJob(job.id, {
+          status: "pending",
+          errorMessage: `Circuit breaker: ${circuitBreakerDecision.reason}`,
+          scheduledFor: nextRetryAt,
+        });
+        return;
+      }
+    }
+
+    const startTime = Date.now();
+    let processingError: Error | null = null;
+
     try {
       await storage.updateJob(job.id, {
         status: "processing",
@@ -244,26 +272,202 @@ export class QueueService {
       });
 
       await processor.process(job);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       
+      // Record success in circuit breaker
+      if (marketplace) {
+        await circuitBreakerService.recordSuccess(marketplace);
+      }
+      
+      // Record success metrics
+      await retryMetricsService.recordRetryMetrics(
+        job,
+        job.attempts + 1,
+        "success",
+        undefined,
+        Date.now() - startTime,
+        marketplace
+      );
+      
+    } catch (error) {
+      processingError = error instanceof Error ? error : new Error("Unknown error");
+      
+      // Record failure in circuit breaker
+      if (marketplace) {
+        await circuitBreakerService.recordFailure(marketplace);
+      }
+      
+      // Use advanced retry strategy
+      await this.handleJobFailure(job, processingError, Date.now() - startTime, marketplace);
+    }
+  }
+
+  /**
+   * Handle job failure with advanced retry logic
+   */
+  private async handleJobFailure(
+    job: Job,
+    error: Error,
+    processingDuration: number,
+    marketplace?: string
+  ): Promise<void> {
+    try {
+      // Create retry context for analysis
+      const retryContext: RetryContext = {
+        job,
+        error,
+        marketplace,
+        processingDuration,
+      };
+
+      // Add additional context if available (HTTP status, response headers, etc.)
+      // This would be populated by the marketplace service in a real implementation
+      if (error.message.includes("429") || error.message.toLowerCase().includes("rate limit")) {
+        (retryContext as any).statusCode = 429;
+      } else if (error.message.includes("401") || error.message.toLowerCase().includes("unauthorized")) {
+        (retryContext as any).statusCode = 401;
+      } else if (error.message.includes("500") || error.message.toLowerCase().includes("internal server error")) {
+        (retryContext as any).statusCode = 500;
+      }
+
+      // Determine retry strategy
+      const retryDecision = await retryStrategyService.determineRetryStrategy(retryContext);
+      
+      console.log(`Retry decision for job ${job.id}:`, {
+        shouldRetry: retryDecision.shouldRetry,
+        reason: retryDecision.reason,
+        delayMs: retryDecision.delayMs,
+        category: retryDecision.metadata.failureCategory,
+      });
+
+      // Record failure metrics
+      await retryMetricsService.recordRetryMetrics(
+        job,
+        job.attempts + 1,
+        "failure",
+        retryDecision.metadata.failureCategory,
+        processingDuration,
+        marketplace
+      );
+
+      if (retryDecision.shouldRetry) {
+        // Schedule retry with calculated delay
+        await storage.updateJob(job.id, {
+          status: "pending",
+          errorMessage: error.message,
+          scheduledFor: retryDecision.nextAttemptAt,
+        });
+        
+        console.info(`Job ${job.id} scheduled for retry at ${retryDecision.nextAttemptAt.toISOString()}. Delay: ${retryDecision.delayMs}ms`);
+      } else {
+        // Check if we should move to dead letter queue
+        if (retryDecision.maxRetriesReached) {
+          await this.moveJobToDeadLetterQueue(job, retryDecision.metadata.failureCategory, error);
+        } else {
+          // Permanent failure - mark as failed
+          await storage.updateJob(job.id, {
+            status: "failed",
+            errorMessage: `${error.message} (${retryDecision.reason})`,
+            completedAt: new Date(),
+          });
+          
+          // Create audit log for permanent failure
+          await storage.createAuditLog({
+            userId: job.userId,
+            action: "job_permanently_failed",
+            entityType: "job",
+            entityId: job.id,
+            metadata: {
+              failureCategory: retryDecision.metadata.failureCategory,
+              errorType: retryDecision.metadata.errorType,
+              confidence: retryDecision.metadata.confidence,
+              requiresUserIntervention: retryDecision.requiresUserIntervention,
+            },
+            ipAddress: null,
+            userAgent: null,
+          });
+        }
+      }
+      
+    } catch (retryError) {
+      console.error(`Failed to handle job failure for ${job.id}:`, retryError);
+      
+      // Fallback to basic retry logic
       if (job.attempts >= job.maxAttempts) {
         await storage.updateJob(job.id, {
           status: "failed",
-          errorMessage,
+          errorMessage: `${error.message} (retry handling failed: ${retryError instanceof Error ? retryError.message : "unknown"})`,
           completedAt: new Date(),
         });
       } else {
-        // Schedule retry
-        const retryDelay = Math.pow(2, job.attempts) * 1000; // Exponential backoff
+        // Simple exponential backoff as fallback
+        const retryDelay = Math.pow(2, job.attempts) * 1000;
         await storage.updateJob(job.id, {
           status: "pending",
-          errorMessage,
+          errorMessage: error.message,
           scheduledFor: new Date(Date.now() + retryDelay),
         });
       }
+    }
+  }
+
+  /**
+   * Move a failed job to the dead letter queue
+   */
+  private async moveJobToDeadLetterQueue(
+    job: Job,
+    finalFailureCategory: string,
+    error: Error
+  ): Promise<void> {
+    try {
+      // Get retry history for this job (would be from database in production)
+      const retryHistory: JobRetryHistory[] = []; // Placeholder
       
-      throw error;
+      const dlqEntry = await deadLetterQueueService.moveToDeadLetterQueue(
+        job,
+        finalFailureCategory,
+        retryHistory
+      );
+      
+      console.warn(`Job ${job.id} moved to dead letter queue:`, {
+        dlqId: dlqEntry.id,
+        finalFailureCategory,
+        totalAttempts: job.attempts,
+        requiresManualReview: dlqEntry.requiresManualReview,
+      });
+      
+    } catch (dlqError) {
+      console.error(`Failed to move job ${job.id} to dead letter queue:`, dlqError);
+      
+      // Mark as failed if DLQ also fails
+      await storage.updateJob(job.id, {
+        status: "failed",
+        errorMessage: `${error.message} (DLQ failed: ${dlqError instanceof Error ? dlqError.message : "unknown"})`,
+        completedAt: new Date(),
+      });
+    }
+  }
+
+  /**
+   * Extract marketplace from job data
+   */
+  private extractMarketplaceFromJob(job: Job): string | undefined {
+    try {
+      const jobData = job.data as any;
+      
+      // For single marketplace jobs
+      if (jobData.marketplace) {
+        return jobData.marketplace;
+      }
+      
+      // For multi-marketplace jobs, use the first marketplace
+      if (jobData.marketplaces && Array.isArray(jobData.marketplaces) && jobData.marketplaces.length > 0) {
+        return jobData.marketplaces[0];
+      }
+      
+      return undefined;
+    } catch (error) {
+      console.warn(`Failed to extract marketplace from job ${job.id}:`, error);
+      return undefined;
     }
   }
 
