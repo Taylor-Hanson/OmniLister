@@ -80,7 +80,7 @@ export default function AutoDelist() {
   // Create rule mutation
   const createRuleMutation = useMutation({
     mutationFn: async (data: RuleFormData) => {
-      return apiRequest("/api/auto-delist/rules", "POST", data);
+      return apiRequest("POST", "/api/auto-delist/rules", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auto-delist/rules"] });
@@ -104,7 +104,7 @@ export default function AutoDelist() {
   // Update rule mutation
   const updateRuleMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<RuleFormData> }) => {
-      return apiRequest(`/api/auto-delist/rules/${id}`, "PATCH", data);
+      return apiRequest("PATCH", `/api/auto-delist/rules/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auto-delist/rules"] });
@@ -129,7 +129,7 @@ export default function AutoDelist() {
   // Delete rule mutation
   const deleteRuleMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/auto-delist/rules/${id}`, "DELETE");
+      return apiRequest("DELETE", `/api/auto-delist/rules/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auto-delist/rules"] });
@@ -151,7 +151,7 @@ export default function AutoDelist() {
   // Trigger rule mutation
   const triggerRuleMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/auto-delist/trigger/${id}`, "POST");
+      return apiRequest("POST", `/api/auto-delist/trigger/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auto-delist/history"] });
