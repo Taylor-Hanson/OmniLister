@@ -331,31 +331,31 @@ export default function Dashboard() {
           <p className="text-muted-foreground">Choose the plan that fits your reselling goals</p>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {/* Free Plan */}
           <div className="bg-muted/30 rounded-lg border border-border p-6 relative">
             <div className="text-center mb-6">
               <h3 className="text-xl font-bold text-foreground mb-2">Free</h3>
               <div className="text-3xl font-bold text-foreground">$0</div>
-              <p className="text-sm text-muted-foreground">Perfect for getting started</p>
+              <p className="text-sm text-muted-foreground">Forever free</p>
             </div>
             
             <ul className="space-y-3 mb-6">
               <li className="flex items-center">
                 <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">100 monthly listings</span>
+                <span className="text-sm text-foreground">10 new listings/month</span>
               </li>
               <li className="flex items-center">
                 <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">Unlimited crossposting to ALL platforms</span>
+                <span className="text-sm text-foreground">All 12 marketplaces</span>
               </li>
               <li className="flex items-center">
                 <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">Basic AI features</span>
+                <span className="text-sm text-foreground">All features available</span>
               </li>
               <li className="flex items-center">
                 <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">Mobile app access</span>
+                <span className="text-sm text-foreground">Basic analytics</span>
               </li>
             </ul>
             
@@ -364,16 +364,122 @@ export default function Dashboard() {
             </Button>
           </div>
           
-          {/* Pro Plan */}
+          {/* Starter Plan */}
+          <div className="bg-muted/30 rounded-lg border border-border p-6 relative">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-bold text-foreground mb-2">Starter</h3>
+              <div className="text-3xl font-bold text-foreground">$9.99</div>
+              <p className="text-sm text-muted-foreground">For casual sellers</p>
+            </div>
+            
+            <ul className="space-y-3 mb-6">
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">50 new listings/month</span>
+              </li>
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">Priority support</span>
+              </li>
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">Bulk operations</span>
+              </li>
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">Enhanced analytics</span>
+              </li>
+            </ul>
+            
+            <Link href={user ? "/subscribe?plan=starter" : "/signup"}>
+              <Button variant="outline" className="w-full" disabled={user?.plan === 'starter'}>
+                {user?.plan === 'starter' ? 'Current Plan' : user ? 'Subscribe' : 'Get Started'}
+              </Button>
+            </Link>
+          </div>
+          
+          {/* Growth Plan */}
           <div className="bg-primary/5 rounded-lg border-2 border-primary p-6 relative">
             <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-              <span className="bg-primary text-primary-foreground px-3 py-1 text-xs font-medium rounded-full">Most Popular</span>
+              <span className="bg-primary text-primary-foreground px-3 py-1 text-xs font-medium rounded-full">Popular</span>
             </div>
             
             <div className="text-center mb-6">
-              <h3 className="text-xl font-bold text-foreground mb-2">Pro</h3>
-              <div className="text-3xl font-bold text-foreground">$19.99</div>
-              <p className="text-sm text-muted-foreground">For serious resellers</p>
+              <h3 className="text-xl font-bold text-foreground mb-2">Growth</h3>
+              <div className="text-3xl font-bold text-foreground">$29.99</div>
+              <p className="text-sm text-muted-foreground">For growing businesses</p>
+            </div>
+            
+            <ul className="space-y-3 mb-6">
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">300 new listings/month</span>
+              </li>
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">Advanced AI features</span>
+              </li>
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">Voice-to-listing</span>
+              </li>
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">Competition analysis</span>
+              </li>
+            </ul>
+            
+            <Link href={user ? "/subscribe?plan=growth" : "/signup"}>
+              <Button className="w-full" disabled={user?.plan === 'growth'}>
+                {user?.plan === 'growth' ? 'Current Plan' : user ? 'Subscribe' : 'Get Started'}
+              </Button>
+            </Link>
+          </div>
+          
+          {/* Professional Plan */}
+          <div className="bg-muted/30 rounded-lg border border-border p-6 relative">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-bold text-foreground mb-2">Professional</h3>
+              <div className="text-3xl font-bold text-foreground">$39.99</div>
+              <p className="text-sm text-muted-foreground">For power sellers</p>
+            </div>
+            
+            <ul className="space-y-3 mb-6">
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">1,000 new listings/month</span>
+              </li>
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">API access</span>
+              </li>
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">Smart scheduling</span>
+              </li>
+              <li className="flex items-center">
+                <i className="fas fa-check text-accent mr-3"></i>
+                <span className="text-sm text-foreground">Predictive analytics</span>
+              </li>
+            </ul>
+            
+            <Link href={user ? "/subscribe?plan=professional" : "/signup"}>
+              <Button variant="secondary" className="w-full" disabled={user?.plan === 'professional'}>
+                {user?.plan === 'professional' ? 'Current Plan' : user ? 'Subscribe' : 'Get Started'}
+              </Button>
+            </Link>
+          </div>
+          
+          {/* Unlimited Plan */}
+          <div className="bg-gradient-to-br from-primary/10 via-purple-500/10 to-pink-500/10 rounded-lg border-2 border-primary/50 p-6 relative">
+            <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
+              <span className="bg-gradient-to-r from-primary to-purple-600 text-primary-foreground px-3 py-1 text-xs font-medium rounded-full">Best Value</span>
+            </div>
+            
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-bold text-foreground mb-2">Unlimited</h3>
+              <div className="text-3xl font-bold text-foreground">$44.99</div>
+              <p className="text-sm text-muted-foreground">For scaling fast</p>
             </div>
             
             <ul className="space-y-3 mb-6">
@@ -383,53 +489,11 @@ export default function Dashboard() {
               </li>
               <li className="flex items-center">
                 <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">Advanced AI product recognition</span>
+                <span className="text-sm text-foreground">Everything included</span>
               </li>
               <li className="flex items-center">
                 <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">Voice-to-listing technology</span>
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">Bulk management tools</span>
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">Analytics dashboard</span>
-              </li>
-            </ul>
-            
-            <Link href="/subscribe">
-              <Button className="w-full" disabled={user?.plan === 'pro'}>
-                {user?.plan === 'pro' ? 'Current Plan' : 'Upgrade to Pro'}
-              </Button>
-            </Link>
-          </div>
-          
-          {/* Enterprise Plan */}
-          <div className="bg-muted/30 rounded-lg border border-border p-6 relative">
-            <div className="text-center mb-6">
-              <h3 className="text-xl font-bold text-foreground mb-2">Enterprise</h3>
-              <div className="text-3xl font-bold text-foreground">$39.99</div>
-              <p className="text-sm text-muted-foreground">For large-scale operations</p>
-            </div>
-            
-            <ul className="space-y-3 mb-6">
-              <li className="flex items-center">
-                <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">Everything in Pro</span>
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">Advanced AI algorithms</span>
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">Priority support</span>
-              </li>
-              <li className="flex items-center">
-                <i className="fas fa-check text-accent mr-3"></i>
-                <span className="text-sm text-foreground">API access</span>
+                <span className="text-sm text-foreground">White-glove support</span>
               </li>
               <li className="flex items-center">
                 <i className="fas fa-check text-accent mr-3"></i>
@@ -437,9 +501,11 @@ export default function Dashboard() {
               </li>
             </ul>
             
-            <Button variant="secondary" className="w-full" disabled={user?.plan === 'enterprise'}>
-              {user?.plan === 'enterprise' ? 'Current Plan' : 'Contact Sales'}
-            </Button>
+            <Link href={user ? "/subscribe?plan=unlimited" : "/signup"}>
+              <Button className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90" disabled={user?.plan === 'unlimited'}>
+                {user?.plan === 'unlimited' ? 'Current Plan' : user ? 'Subscribe' : 'Get Started'}
+              </Button>
+            </Link>
           </div>
         </div>
       </div>
