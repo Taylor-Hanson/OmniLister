@@ -811,6 +811,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Plan selection route (without payment for MVP)
+  app.post("/api/subscription/select-plan", requireAuth, async (req: any, res) => {
+    try {
+      const { plan } = req.body;
+      const userId = req.user?.id;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      // Define plan limits
+      const planLimits: { [key: string]: number | null } = {
+        free: 10,
+        starter: 50,
+        growth: 300,
+        professional: 1000,
+        unlimited: null, // null means unlimited
+      };
+
+      // For MVP, only allow free plan selection
+      if (plan === 'free') {
+        const updatedUser = await storage.updateUser(userId, {
+          plan: 'free',
+          listingCredits: planLimits.free,
+          subscriptionStatus: 'active',
+        });
+
+        // Create audit log
+        await storage.createAuditLog({
+          userId,
+          action: 'plan_selected',
+          entityType: 'subscription',
+          metadata: { plan: 'free' },
+          ipAddress: req.ip,
+          userAgent: req.get("user-agent") || null,
+        });
+
+        return res.json({ 
+          success: true, 
+          user: { ...updatedUser, password: undefined },
+          message: 'Free plan activated successfully!'
+        });
+      } else if (['starter', 'growth', 'professional', 'unlimited'].includes(plan)) {
+        // For paid plans, return contact sales message
+        return res.json({
+          success: false,
+          requiresPayment: true,
+          message: 'Paid plans are coming soon! Please contact sales@crosslist.com for early access.',
+          contactEmail: 'sales@crosslist.com'
+        });
+      } else {
+        return res.status(400).json({ error: 'Invalid plan selected' });
+      }
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Get user subscription info
+  app.get("/api/subscription/info", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Calculate usage percentage
+      const usagePercentage = user.listingCredits 
+        ? Math.round((user.listingsUsedThisMonth / user.listingCredits) * 100)
+        : 0;
+
+      return res.json({
+        plan: user.plan,
+        listingCredits: user.listingCredits,
+        listingsUsedThisMonth: user.listingsUsedThisMonth,
+        usagePercentage,
+        billingCycleStart: user.billingCycleStart,
+        subscriptionStatus: user.subscriptionStatus,
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // Stripe subscription routes
   app.post('/api/get-or-create-subscription', requireAuth, async (req, res) => {
     if (!stripe) {
