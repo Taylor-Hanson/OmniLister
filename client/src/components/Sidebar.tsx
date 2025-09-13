@@ -57,6 +57,12 @@ const navigationItems = [
     testId: "nav-auto-delist"
   },
   {
+    href: "/webhooks",
+    icon: "fas fa-plug",
+    label: "Webhooks",
+    testId: "nav-webhooks"
+  },
+  {
     href: "/settings",
     icon: "fas fa-cog",
     label: "Settings",

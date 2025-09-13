@@ -458,6 +458,136 @@ export const marketplaceRetryConfig = pgTable("marketplace_retry_config", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Webhook Configurations - Store webhook settings per marketplace per user
+export const webhookConfigurations = pgTable("webhook_configurations", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace").notNull(), // ebay, mercari, poshmark, etc.
+  isEnabled: boolean("is_enabled").default(true),
+  webhookUrl: text("webhook_url").notNull(), // Our webhook endpoint URL
+  externalWebhookId: text("external_webhook_id"), // ID from marketplace webhook system
+  webhookSecret: text("webhook_secret"), // Secret for signature verification
+  supportedEvents: text("supported_events").array(), // sale_completed, listing_ended, etc.
+  subscribedEvents: text("subscribed_events").array(), // Events we're actually subscribed to
+  lastVerificationAt: timestamp("last_verification_at"),
+  verificationStatus: text("verification_status").default("pending"), // pending, verified, failed
+  autoRegistered: boolean("auto_registered").default(false), // Whether this was auto-configured
+  registrationData: jsonb("registration_data"), // Marketplace-specific registration details
+  errorCount: integer("error_count").default(0), // Failed webhook attempts
+  lastErrorAt: timestamp("last_error_at"),
+  lastErrorMessage: text("last_error_message"),
+  isActive: boolean("is_active").default(true),
+  metadata: jsonb("metadata"), // Additional marketplace-specific config
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Webhook Events - Store incoming webhook events for processing and auditing
+export const webhookEvents = pgTable("webhook_events", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace").notNull(),
+  eventType: text("event_type").notNull(), // sale_completed, listing_ended, inventory_updated, etc.
+  eventId: text("event_id"), // Unique event ID from marketplace (for deduplication)
+  externalId: text("external_id"), // External listing/item/order ID
+  listingId: uuid("listing_id").references(() => listings.id, { onDelete: "set null" }),
+  eventData: jsonb("event_data").notNull(), // Raw webhook payload
+  processedData: jsonb("processed_data"), // Normalized event data
+  signature: text("signature"), // Webhook signature for verification
+  signatureValid: boolean("signature_valid"),
+  processingStatus: text("processing_status").default("pending"), // pending, processing, completed, failed, ignored
+  processingAttempts: integer("processing_attempts").default(0),
+  maxRetries: integer("max_retries").default(3),
+  errorMessage: text("error_message"),
+  errorDetails: jsonb("error_details"),
+  syncJobId: uuid("sync_job_id").references(() => crossPlatformSyncJobs.id, { onDelete: "set null" }),
+  duplicateOfEventId: uuid("duplicate_of_event_id").references(() => webhookEvents.id, { onDelete: "set null" }),
+  processingTime: integer("processing_time"), // Time taken to process in milliseconds
+  ipAddress: text("ip_address"), // Source IP for security
+  userAgent: text("user_agent"),
+  headers: jsonb("headers"), // HTTP headers from webhook request
+  priority: integer("priority").default(5), // Processing priority (1-10, higher = more urgent)
+  scheduledForRetryAt: timestamp("scheduled_for_retry_at"),
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Webhook Deliveries - Track webhook delivery status and health monitoring
+export const webhookDeliveries = pgTable("webhook_deliveries", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  webhookConfigId: uuid("webhook_config_id").notNull().references(() => webhookConfigurations.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace").notNull(),
+  eventType: text("event_type").notNull(),
+  deliveryAttempt: integer("delivery_attempt").default(1),
+  httpStatus: integer("http_status"),
+  responseTime: integer("response_time"), // Response time in milliseconds
+  successful: boolean("successful").default(false),
+  errorMessage: text("error_message"),
+  requestHeaders: jsonb("request_headers"),
+  requestBody: jsonb("request_body"),
+  responseHeaders: jsonb("response_headers"),
+  responseBody: text("response_body"),
+  retryCount: integer("retry_count").default(0),
+  maxRetries: integer("max_retries").default(5),
+  nextRetryAt: timestamp("next_retry_at"),
+  finalFailure: boolean("final_failure").default(false),
+  deliveredAt: timestamp("delivered_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Polling Schedules - For marketplaces without webhook support
+export const pollingSchedules = pgTable("polling_schedules", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace").notNull(),
+  isEnabled: boolean("is_enabled").default(true),
+  pollingInterval: integer("polling_interval").default(300), // Seconds between polls (default 5 minutes)
+  lastPollAt: timestamp("last_poll_at"),
+  nextPollAt: timestamp("next_poll_at"),
+  pollEndpoint: text("poll_endpoint"), // API endpoint to poll
+  pollMethod: text("poll_method").default("GET"), // HTTP method
+  pollHeaders: jsonb("poll_headers"), // Required headers for polling
+  pollParams: jsonb("poll_params"), // Query parameters
+  lastPollStatus: text("last_poll_status"), // success, failed, rate_limited
+  lastPollResponse: jsonb("last_poll_response"), // Last response data
+  lastPollError: text("last_poll_error"),
+  consecutiveFailures: integer("consecutive_failures").default(0),
+  maxFailures: integer("max_failures").default(10), // Disable after this many failures
+  adaptivePolling: boolean("adaptive_polling").default(true), // Adjust interval based on activity
+  minInterval: integer("min_interval").default(60), // Minimum seconds between polls
+  maxInterval: integer("max_interval").default(3600), // Maximum seconds between polls
+  currentInterval: integer("current_interval").default(300), // Current adaptive interval
+  lastSaleDetectedAt: timestamp("last_sale_detected_at"),
+  salesDetectedSinceLastPoll: integer("sales_detected_since_last_poll").default(0),
+  errorCount: integer("error_count").default(0),
+  metadata: jsonb("metadata"), // Marketplace-specific polling config
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Webhook Health Monitoring - Track webhook system health and performance
+export const webhookHealthMetrics = pgTable("webhook_health_metrics", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketplace: text("marketplace").notNull(),
+  timeWindow: timestamp("time_window").notNull(), // Hour window start
+  totalEvents: integer("total_events").default(0),
+  successfulEvents: integer("successful_events").default(0),
+  failedEvents: integer("failed_events").default(0),
+  duplicateEvents: integer("duplicate_events").default(0),
+  averageProcessingTime: decimal("average_processing_time", { precision: 10, scale: 2 }).default("0"),
+  maxProcessingTime: integer("max_processing_time").default(0),
+  minProcessingTime: integer("min_processing_time").default(0),
+  signatureFailures: integer("signature_failures").default(0),
+  rateLimitHits: integer("rate_limit_hits").default(0),
+  retryCount: integer("retry_count").default(0),
+  syncJobsTriggered: integer("sync_jobs_triggered").default(0),
+  successfulSyncs: integer("successful_syncs").default(0),
+  failedSyncs: integer("failed_syncs").default(0),
+  healthScore: decimal("health_score", { precision: 5, scale: 2 }).default("100"), // 0-100 health percentage
+  uptime: decimal("uptime", { precision: 5, scale: 2 }).default("100"), // Percentage uptime
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,
@@ -806,6 +936,9 @@ export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
 export type InsertAnalyticsEvent = z.infer<typeof insertAnalyticsEventSchema>;
 export type SalesMetrics = typeof salesMetrics.$inferSelect;
 export type InsertSalesMetrics = z.infer<typeof insertSalesMetricsSchema>;
+// Alias types for backwards compatibility
+export type Sale = SalesMetrics;
+export type InsertSale = InsertSalesMetrics;
 export type InventoryMetrics = typeof inventoryMetrics.$inferSelect;
 export type InsertInventoryMetrics = z.infer<typeof insertInventoryMetricsSchema>;
 export type MarketplaceMetrics = typeof marketplaceMetrics.$inferSelect;
@@ -1065,6 +1198,34 @@ export const insertCrossPlatformSyncHistorySchema = createInsertSchema(crossPlat
   createdAt: true,
 });
 
+// Insert schemas for webhook tables
+export const insertWebhookConfigurationSchema = createInsertSchema(webhookConfigurations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWebhookEventSchema = createInsertSchema(webhookEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertWebhookDeliverySchema = createInsertSchema(webhookDeliveries).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPollingScheduleSchema = createInsertSchema(pollingSchedules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWebhookHealthMetricsSchema = createInsertSchema(webhookHealthMetrics).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Batch types
 export type Batch = typeof batches.$inferSelect;
 export type InsertBatch = z.infer<typeof insertBatchSchema>;
@@ -1084,3 +1245,15 @@ export type CrossPlatformSyncJob = typeof crossPlatformSyncJobs.$inferSelect;
 export type InsertCrossPlatformSyncJob = z.infer<typeof insertCrossPlatformSyncJobSchema>;
 export type CrossPlatformSyncHistory = typeof crossPlatformSyncHistory.$inferSelect;
 export type InsertCrossPlatformSyncHistory = z.infer<typeof insertCrossPlatformSyncHistorySchema>;
+
+// Webhook types
+export type WebhookConfiguration = typeof webhookConfigurations.$inferSelect;
+export type InsertWebhookConfiguration = z.infer<typeof insertWebhookConfigurationSchema>;
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
+export type InsertWebhookEvent = z.infer<typeof insertWebhookEventSchema>;
+export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
+export type InsertWebhookDelivery = z.infer<typeof insertWebhookDeliverySchema>;
+export type PollingSchedule = typeof pollingSchedules.$inferSelect;
+export type InsertPollingSchedule = z.infer<typeof insertPollingScheduleSchema>;
+export type WebhookHealthMetrics = typeof webhookHealthMetrics.$inferSelect;
+export type InsertWebhookHealthMetrics = z.infer<typeof insertWebhookHealthMetricsSchema>;
