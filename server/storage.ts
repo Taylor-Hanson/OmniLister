@@ -49,7 +49,7 @@ export interface IStorage {
   updateListingPost(id: string, updates: Partial<ListingPost>): Promise<ListingPost>;
 
   // Job methods
-  getJobs(userId: string, filters?: { status?: string; type?: string }): Promise<Job[]>;
+  getJobs(userId?: string, filters?: { status?: string; type?: string }): Promise<Job[]>;
   getJob(id: string): Promise<Job | undefined>;
   createJob(userId: string, job: InsertJob): Promise<Job>;
   updateJob(id: string, updates: Partial<Job>): Promise<Job>;
@@ -313,8 +313,13 @@ export class MemStorage implements IStorage {
     return updatedPost;
   }
 
-  async getJobs(userId: string, filters?: { status?: string; type?: string }): Promise<Job[]> {
-    let jobs = Array.from(this.jobs.values()).filter(job => job.userId === userId);
+  async getJobs(userId?: string, filters?: { status?: string; type?: string }): Promise<Job[]> {
+    let jobs = Array.from(this.jobs.values());
+    
+    // Only filter by userId if provided
+    if (userId) {
+      jobs = jobs.filter(job => job.userId === userId);
+    }
     
     if (filters?.status) {
       jobs = jobs.filter(job => job.status === filters.status);

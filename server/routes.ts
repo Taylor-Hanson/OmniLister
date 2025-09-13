@@ -12,6 +12,7 @@ import { onboardingService, ONBOARDING_STEPS } from "./services/onboardingServic
 import { analyticsService } from "./services/analyticsService";
 import { requireAuth, optionalAuth, requirePlan } from "./middleware/auth";
 import { insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema, insertSyncSettingsSchema, insertSyncRuleSchema, insertAutoDelistRuleSchema } from "@shared/schema";
+import { hashPassword, verifyPassword, generateToken, validatePassword } from "./auth";
 import { ObjectStorageService } from "./objectStorage";
 
 // Stripe client - only initialized if API key is available
@@ -36,14 +37,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, username, password } = insertUserSchema.parse(req.body);
       
+      // Validate password strength
+      const passwordValidation = validatePassword(password);
+      if (!passwordValidation.valid) {
+        return res.status(400).json({ error: passwordValidation.message });
+      }
+      
       // Check if user already exists
       const existingUser = await storage.getUserByEmail(email);
       if (existingUser) {
         return res.status(400).json({ error: "User already exists" });
       }
 
-      const user = await storage.createUser({ email, username, password });
-      res.json({ user: { ...user, password: undefined } });
+      // Hash the password before storing
+      const hashedPassword = await hashPassword(password);
+      const user = await storage.createUser({ email, username, password: hashedPassword });
+      
+      // Generate JWT token
+      const token = generateToken(user.id, user.email);
+      
+      res.json({ 
+        user: { ...user, password: undefined },
+        token
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -54,11 +70,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email, password } = req.body;
       const user = await storage.getUserByEmail(email);
       
-      if (!user || user.password !== password) {
+      if (!user) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
-      res.json({ user: { ...user, password: undefined }, token: user.id });
+      // Verify the password against the hash
+      const isValidPassword = await verifyPassword(password, user.password);
+      if (!isValidPassword) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      // Generate JWT token
+      const token = generateToken(user.id, user.email);
+
+      res.json({ 
+        user: { ...user, password: undefined }, 
+        token 
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

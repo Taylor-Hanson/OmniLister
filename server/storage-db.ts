@@ -206,8 +206,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Job methods
-  async getJobs(userId: string, filters?: { status?: string; type?: string }): Promise<Job[]> {
-    let conditions = [eq(jobs.userId, userId)];
+  async getJobs(userId?: string, filters?: { status?: string; type?: string }): Promise<Job[]> {
+    let conditions: any[] = [];
+    
+    // Only filter by userId if provided
+    if (userId) {
+      conditions.push(eq(jobs.userId, userId));
+    }
     
     if (filters?.status) {
       conditions.push(eq(jobs.status, filters.status));
@@ -216,7 +221,11 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(jobs.type, filters.type));
     }
     
-    return await db.select().from(jobs).where(and(...conditions)).orderBy(desc(jobs.createdAt));
+    const query = conditions.length > 0 
+      ? db.select().from(jobs).where(and(...conditions)).orderBy(desc(jobs.createdAt))
+      : db.select().from(jobs).orderBy(desc(jobs.createdAt));
+    
+    return await query;
   }
 
   async getJob(id: string): Promise<Job | undefined> {

@@ -268,7 +268,7 @@ export class QueueService {
 
   async processPendingJobs(): Promise<void> {
     const now = new Date();
-    const allJobs = await storage.getJobs("", { status: "pending" });
+    const allJobs = await storage.getJobs(undefined, { status: "pending" });
     const pendingJobs = allJobs.filter(job => job.scheduledFor <= now);
 
     for (const job of pendingJobs) {
