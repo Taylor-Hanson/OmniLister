@@ -16,6 +16,8 @@ export const users = pgTable("users", {
   stripeSubscriptionId: text("stripe_subscription_id"),
   subscriptionStatus: text("subscription_status").default("inactive"),
   onboardingCompleted: boolean("onboarding_completed").default(false),
+  timezone: text("timezone").default("UTC"), // User's timezone for intelligent scheduling
+  preferredPostingWindows: jsonb("preferred_posting_windows"), // User's preferred posting times per marketplace
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -81,9 +83,85 @@ export const jobs = pgTable("jobs", {
   attempts: integer("attempts").default(0),
   maxAttempts: integer("max_attempts").default(3),
   scheduledFor: timestamp("scheduled_for").defaultNow(),
+  smartScheduled: boolean("smart_scheduled").default(false), // Whether this job was intelligently scheduled
+  originalScheduledFor: timestamp("original_scheduled_for"), // Original requested time before smart scheduling
+  marketplaceGroup: text("marketplace_group"), // Group ID for batch processing multiple marketplaces
+  priority: integer("priority").default(0), // Higher priority jobs get scheduled first
+  schedulingMetadata: jsonb("scheduling_metadata"), // Smart scheduling analytics and reasoning
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Marketplace Posting Rules - optimal timing rules per marketplace
+export const marketplacePostingRules = pgTable("marketplace_posting_rules", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketplace: text("marketplace").notNull().unique(),
+  optimalWindows: jsonb("optimal_windows").notNull(), // Array of {dayOfWeek: 0-6, startHour: 0-23, endHour: 0-23, timezone: string}
+  peakHours: jsonb("peak_hours"), // Array of hour ranges when marketplace is most active
+  avoidHours: jsonb("avoid_hours"), // Array of hour ranges to avoid posting (downtime, maintenance)
+  rateLimitPerHour: integer("rate_limit_per_hour").default(100), // Max posts per hour
+  rateLimitPerDay: integer("rate_limit_per_day").default(1000), // Max posts per day
+  minDelayBetweenPosts: integer("min_delay_between_posts").default(30), // Seconds between posts
+  categorySpecificRules: jsonb("category_specific_rules"), // Special rules for specific categories
+  seasonalAdjustments: jsonb("seasonal_adjustments"), // Seasonal posting patterns
+  success_multiplier: decimal("success_multiplier", { precision: 3, scale: 2 }).default("1.0"), // Success rate multiplier for this marketplace
+  isActive: boolean("is_active").default(true),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Posting Success Analytics - track posting success to improve future scheduling
+export const postingSuccessAnalytics = pgTable("posting_success_analytics", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace").notNull(),
+  listingId: uuid("listing_id").references(() => listings.id, { onDelete: "cascade" }),
+  postedAt: timestamp("posted_at").notNull(),
+  dayOfWeek: integer("day_of_week").notNull(), // 0 = Sunday, 6 = Saturday
+  hourOfDay: integer("hour_of_day").notNull(), // 0-23
+  category: text("category"),
+  brand: text("brand"),
+  priceRange: text("price_range"), // low, medium, high
+  views: integer("views").default(0),
+  likes: integer("likes").default(0),
+  messages: integer("messages").default(0),
+  sold: boolean("sold").default(false),
+  daysToSell: integer("days_to_sell"),
+  engagement_score: decimal("engagement_score", { precision: 5, scale: 2 }).default("0"), // Calculated engagement metric
+  success_score: decimal("success_score", { precision: 5, scale: 2 }).default("0"), // Overall success metric
+  timezone: text("timezone").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Rate Limiting Tracker - track API usage per marketplace
+export const rateLimitTracker = pgTable("rate_limit_tracker", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketplace: text("marketplace").notNull(),
+  timeWindow: timestamp("time_window").notNull(), // Hour or day window start
+  windowType: text("window_type").notNull(), // hourly, daily
+  requestCount: integer("request_count").default(0),
+  successCount: integer("success_count").default(0),
+  failureCount: integer("failure_count").default(0),
+  remainingLimit: integer("remaining_limit"),
+  resetTime: timestamp("reset_time"),
+  lastRequestAt: timestamp("last_request_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Queue Distribution - manage posting queue load balancing
+export const queueDistribution = pgTable("queue_distribution", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  timeSlot: timestamp("time_slot").notNull(), // 15-minute time slots
+  marketplace: text("marketplace").notNull(),
+  scheduledJobs: integer("scheduled_jobs").default(0),
+  maxCapacity: integer("max_capacity").default(10), // Max jobs per time slot per marketplace
+  averageProcessingTime: integer("average_processing_time").default(60), // Seconds
+  priority_weight: decimal("priority_weight", { precision: 3, scale: 2 }).default("1.0"),
+  isAvailable: boolean("is_available").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const auditLogs = pgTable("audit_logs", {
@@ -261,6 +339,8 @@ export const insertUserSchema = createInsertSchema(users).pick({
   email: true,
   username: true,
   password: true,
+  timezone: true,
+  preferredPostingWindows: true,
 });
 
 export const insertMarketplaceConnectionSchema = createInsertSchema(marketplaceConnections).pick({
@@ -295,6 +375,66 @@ export const insertJobSchema = createInsertSchema(jobs).pick({
   type: true,
   data: true,
   scheduledFor: true,
+  smartScheduled: true,
+  originalScheduledFor: true,
+  marketplaceGroup: true,
+  priority: true,
+  schedulingMetadata: true,
+});
+
+export const insertMarketplacePostingRulesSchema = createInsertSchema(marketplacePostingRules).pick({
+  marketplace: true,
+  optimalWindows: true,
+  peakHours: true,
+  avoidHours: true,
+  rateLimitPerHour: true,
+  rateLimitPerDay: true,
+  minDelayBetweenPosts: true,
+  categorySpecificRules: true,
+  seasonalAdjustments: true,
+  success_multiplier: true,
+  isActive: true,
+});
+
+export const insertPostingSuccessAnalyticsSchema = createInsertSchema(postingSuccessAnalytics).pick({
+  marketplace: true,
+  listingId: true,
+  postedAt: true,
+  dayOfWeek: true,
+  hourOfDay: true,
+  category: true,
+  brand: true,
+  priceRange: true,
+  views: true,
+  likes: true,
+  messages: true,
+  sold: true,
+  daysToSell: true,
+  engagement_score: true,
+  success_score: true,
+  timezone: true,
+});
+
+export const insertRateLimitTrackerSchema = createInsertSchema(rateLimitTracker).pick({
+  marketplace: true,
+  timeWindow: true,
+  windowType: true,
+  requestCount: true,
+  successCount: true,
+  failureCount: true,
+  remainingLimit: true,
+  resetTime: true,
+  lastRequestAt: true,
+});
+
+export const insertQueueDistributionSchema = createInsertSchema(queueDistribution).pick({
+  timeSlot: true,
+  marketplace: true,
+  scheduledJobs: true,
+  maxCapacity: true,
+  averageProcessingTime: true,
+  priority_weight: true,
+  isAvailable: true,
 });
 
 export const insertSyncSettingsSchema = createInsertSchema(syncSettings).pick({
@@ -434,3 +574,11 @@ export type InventoryMetrics = typeof inventoryMetrics.$inferSelect;
 export type InsertInventoryMetrics = z.infer<typeof insertInventoryMetricsSchema>;
 export type MarketplaceMetrics = typeof marketplaceMetrics.$inferSelect;
 export type InsertMarketplaceMetrics = z.infer<typeof insertMarketplaceMetricsSchema>;
+export type MarketplacePostingRules = typeof marketplacePostingRules.$inferSelect;
+export type InsertMarketplacePostingRules = z.infer<typeof insertMarketplacePostingRulesSchema>;
+export type PostingSuccessAnalytics = typeof postingSuccessAnalytics.$inferSelect;
+export type InsertPostingSuccessAnalytics = z.infer<typeof insertPostingSuccessAnalyticsSchema>;
+export type RateLimitTracker = typeof rateLimitTracker.$inferSelect;
+export type InsertRateLimitTracker = z.infer<typeof insertRateLimitTrackerSchema>;
+export type QueueDistribution = typeof queueDistribution.$inferSelect;
+export type InsertQueueDistribution = z.infer<typeof insertQueueDistributionSchema>;

@@ -15,7 +15,11 @@ import {
   type AnalyticsEvent, type InsertAnalyticsEvent,
   type SalesMetrics, type InsertSalesMetrics,
   type InventoryMetrics, type InsertInventoryMetrics,
-  type MarketplaceMetrics, type InsertMarketplaceMetrics
+  type MarketplaceMetrics, type InsertMarketplaceMetrics,
+  type MarketplacePostingRules, type InsertMarketplacePostingRules,
+  type PostingSuccessAnalytics, type InsertPostingSuccessAnalytics,
+  type RateLimitTracker, type InsertRateLimitTracker,
+  type QueueDistribution, type InsertQueueDistribution
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -130,6 +134,31 @@ export interface IStorage {
   createMarketplaceMetrics(userId: string, metrics: InsertMarketplaceMetrics): Promise<MarketplaceMetrics>;
   getMarketplaceMetrics(userId: string, filters?: { marketplace?: string; period?: string }): Promise<MarketplaceMetrics[]>;
   updateMarketplaceMetrics(id: string, updates: Partial<MarketplaceMetrics>): Promise<MarketplaceMetrics>;
+
+  // Smart Scheduling methods
+  
+  // Marketplace Posting Rules methods
+  getMarketplacePostingRules(marketplace?: string): Promise<MarketplacePostingRules[]>;
+  getMarketplacePostingRule(marketplace: string): Promise<MarketplacePostingRules | undefined>;
+  createMarketplacePostingRules(rules: InsertMarketplacePostingRules): Promise<MarketplacePostingRules>;
+  updateMarketplacePostingRules(marketplace: string, updates: Partial<MarketplacePostingRules>): Promise<MarketplacePostingRules>;
+  
+  // Posting Success Analytics methods
+  createPostingSuccessAnalytics(userId: string, analytics: InsertPostingSuccessAnalytics): Promise<PostingSuccessAnalytics>;
+  getPostingSuccessAnalytics(userId: string, filters?: { marketplace?: string; startDate?: Date; endDate?: Date; category?: string }): Promise<PostingSuccessAnalytics[]>;
+  updatePostingSuccessAnalytics(id: string, updates: Partial<PostingSuccessAnalytics>): Promise<PostingSuccessAnalytics>;
+  
+  // Rate Limit Tracker methods
+  getRateLimitTracker(marketplace: string, windowType: string): Promise<RateLimitTracker | undefined>;
+  createRateLimitTracker(tracker: InsertRateLimitTracker): Promise<RateLimitTracker>;
+  updateRateLimitTracker(id: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker>;
+  getCurrentRateLimits(marketplaces: string[]): Promise<Record<string, RateLimitTracker | null>>;
+  
+  // Queue Distribution methods
+  getQueueDistribution(timeSlot: Date, marketplace?: string): Promise<QueueDistribution[]>;
+  createQueueDistribution(distribution: InsertQueueDistribution): Promise<QueueDistribution>;
+  updateQueueDistribution(id: string, updates: Partial<QueueDistribution>): Promise<QueueDistribution>;
+  getAvailableTimeSlots(marketplace: string, startTime: Date, endTime: Date): Promise<QueueDistribution[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -150,6 +179,12 @@ export class MemStorage implements IStorage {
   private salesMetrics: Map<string, SalesMetrics> = new Map();
   private inventoryMetrics: Map<string, InventoryMetrics> = new Map();
   private marketplaceMetrics: Map<string, MarketplaceMetrics> = new Map();
+  
+  // Smart Scheduling storage
+  private marketplacePostingRules: Map<string, MarketplacePostingRules> = new Map();
+  private postingSuccessAnalytics: Map<string, PostingSuccessAnalytics> = new Map();
+  private rateLimitTrackers: Map<string, RateLimitTracker> = new Map();
+  private queueDistributions: Map<string, QueueDistribution> = new Map();
 
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
@@ -867,6 +902,182 @@ export class MemStorage implements IStorage {
     if (monthsSince >= 1) {
       await this.resetMonthlyUsage(userId);
     }
+  }
+
+  // Smart Scheduling method implementations
+  
+  // Marketplace Posting Rules methods
+  async getMarketplacePostingRules(marketplace?: string): Promise<MarketplacePostingRules[]> {
+    let rules = Array.from(this.marketplacePostingRules.values());
+    if (marketplace) {
+      rules = rules.filter(rule => rule.marketplace === marketplace);
+    }
+    return rules.filter(rule => rule.isActive);
+  }
+
+  async getMarketplacePostingRule(marketplace: string): Promise<MarketplacePostingRules | undefined> {
+    return Array.from(this.marketplacePostingRules.values()).find(rule => 
+      rule.marketplace === marketplace && rule.isActive
+    );
+  }
+
+  async createMarketplacePostingRules(rules: InsertMarketplacePostingRules): Promise<MarketplacePostingRules> {
+    const id = randomUUID();
+    const postingRules: MarketplacePostingRules = {
+      ...rules,
+      id,
+      lastUpdated: new Date(),
+      createdAt: new Date(),
+    };
+    this.marketplacePostingRules.set(id, postingRules);
+    return postingRules;
+  }
+
+  async updateMarketplacePostingRules(marketplace: string, updates: Partial<MarketplacePostingRules>): Promise<MarketplacePostingRules> {
+    const existing = Array.from(this.marketplacePostingRules.values()).find(rule => rule.marketplace === marketplace);
+    if (!existing) {
+      throw new Error('Marketplace posting rules not found');
+    }
+    const updated = { ...existing, ...updates, lastUpdated: new Date() };
+    this.marketplacePostingRules.set(existing.id, updated);
+    return updated;
+  }
+
+  // Posting Success Analytics methods
+  async createPostingSuccessAnalytics(userId: string, analytics: InsertPostingSuccessAnalytics): Promise<PostingSuccessAnalytics> {
+    const id = randomUUID();
+    const successAnalytics: PostingSuccessAnalytics = {
+      ...analytics,
+      id,
+      userId,
+      updatedAt: new Date(),
+      createdAt: new Date(),
+    };
+    this.postingSuccessAnalytics.set(id, successAnalytics);
+    return successAnalytics;
+  }
+
+  async getPostingSuccessAnalytics(userId: string, filters?: { marketplace?: string; startDate?: Date; endDate?: Date; category?: string }): Promise<PostingSuccessAnalytics[]> {
+    let analytics = Array.from(this.postingSuccessAnalytics.values()).filter(record => record.userId === userId);
+    
+    if (filters?.marketplace) {
+      analytics = analytics.filter(record => record.marketplace === filters.marketplace);
+    }
+    if (filters?.category) {
+      analytics = analytics.filter(record => record.category === filters.category);
+    }
+    if (filters?.startDate) {
+      analytics = analytics.filter(record => new Date(record.postedAt) >= filters.startDate!);
+    }
+    if (filters?.endDate) {
+      analytics = analytics.filter(record => new Date(record.postedAt) <= filters.endDate!);
+    }
+    
+    return analytics.sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+  }
+
+  async updatePostingSuccessAnalytics(id: string, updates: Partial<PostingSuccessAnalytics>): Promise<PostingSuccessAnalytics> {
+    const analytics = this.postingSuccessAnalytics.get(id);
+    if (!analytics) {
+      throw new Error('Posting success analytics not found');
+    }
+    const updated = { ...analytics, ...updates, updatedAt: new Date() };
+    this.postingSuccessAnalytics.set(id, updated);
+    return updated;
+  }
+
+  // Rate Limit Tracker methods
+  async getRateLimitTracker(marketplace: string, windowType: string): Promise<RateLimitTracker | undefined> {
+    return Array.from(this.rateLimitTrackers.values()).find(tracker => 
+      tracker.marketplace === marketplace && tracker.windowType === windowType
+    );
+  }
+
+  async createRateLimitTracker(tracker: InsertRateLimitTracker): Promise<RateLimitTracker> {
+    const id = randomUUID();
+    const rateLimitTracker: RateLimitTracker = {
+      ...tracker,
+      id,
+      createdAt: new Date(),
+    };
+    this.rateLimitTrackers.set(id, rateLimitTracker);
+    return rateLimitTracker;
+  }
+
+  async updateRateLimitTracker(id: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker> {
+    const tracker = this.rateLimitTrackers.get(id);
+    if (!tracker) {
+      throw new Error('Rate limit tracker not found');
+    }
+    const updated = { ...tracker, ...updates };
+    this.rateLimitTrackers.set(id, updated);
+    return updated;
+  }
+
+  async getCurrentRateLimits(marketplaces: string[]): Promise<Record<string, RateLimitTracker | null>> {
+    const rateLimits: Record<string, RateLimitTracker | null> = {};
+    const now = new Date();
+    
+    for (const marketplace of marketplaces) {
+      // Get most recent hourly rate limit for this marketplace
+      const hourlyTracker = Array.from(this.rateLimitTrackers.values())
+        .filter(tracker => 
+          tracker.marketplace === marketplace && 
+          tracker.windowType === 'hourly' &&
+          tracker.timeWindow.getTime() <= now.getTime()
+        )
+        .sort((a, b) => new Date(b.timeWindow).getTime() - new Date(a.timeWindow).getTime())[0];
+      
+      rateLimits[marketplace] = hourlyTracker || null;
+    }
+    
+    return rateLimits;
+  }
+
+  // Queue Distribution methods
+  async getQueueDistribution(timeSlot: Date, marketplace?: string): Promise<QueueDistribution[]> {
+    let distributions = Array.from(this.queueDistributions.values())
+      .filter(dist => dist.timeSlot.getTime() === timeSlot.getTime());
+    
+    if (marketplace) {
+      distributions = distributions.filter(dist => dist.marketplace === marketplace);
+    }
+    
+    return distributions.filter(dist => dist.isAvailable);
+  }
+
+  async createQueueDistribution(distribution: InsertQueueDistribution): Promise<QueueDistribution> {
+    const id = randomUUID();
+    const queueDistribution: QueueDistribution = {
+      ...distribution,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.queueDistributions.set(id, queueDistribution);
+    return queueDistribution;
+  }
+
+  async updateQueueDistribution(id: string, updates: Partial<QueueDistribution>): Promise<QueueDistribution> {
+    const distribution = this.queueDistributions.get(id);
+    if (!distribution) {
+      throw new Error('Queue distribution not found');
+    }
+    const updated = { ...distribution, ...updates, updatedAt: new Date() };
+    this.queueDistributions.set(id, updated);
+    return updated;
+  }
+
+  async getAvailableTimeSlots(marketplace: string, startTime: Date, endTime: Date): Promise<QueueDistribution[]> {
+    return Array.from(this.queueDistributions.values())
+      .filter(dist => 
+        dist.marketplace === marketplace &&
+        dist.isAvailable &&
+        dist.timeSlot >= startTime &&
+        dist.timeSlot <= endTime &&
+        dist.scheduledJobs < dist.maxCapacity
+      )
+      .sort((a, b) => a.timeSlot.getTime() - b.timeSlot.getTime());
   }
 }
 
