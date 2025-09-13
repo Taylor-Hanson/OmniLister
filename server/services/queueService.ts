@@ -23,6 +23,23 @@ class PostListingProcessor implements JobProcessor {
       throw new Error(`Listing ${listingId} not found`);
     }
 
+    // Emit job start notification
+    if (global.broadcastToUser) {
+      global.broadcastToUser(listing.userId, {
+        type: 'job_status',
+        data: {
+          jobId: job.id,
+          type: job.type,
+          status: 'started',
+          listingId,
+          listingTitle: listing.title,
+          marketplaces,
+          totalMarketplaces: marketplaces.length,
+          progress: 0
+        }
+      });
+    }
+
     const connections = await storage.getMarketplaceConnections(listing.userId);
     const results: Array<{ marketplace: string; success: boolean; error?: string; externalId?: string; url?: string }> = [];
 
@@ -31,10 +48,39 @@ class PostListingProcessor implements JobProcessor {
         // Update job progress
         const progress = Math.round(((results.length) / marketplaces.length) * 100);
         await storage.updateJob(job.id, { progress, status: "processing" });
+        
+        // Emit progress update
+        if (global.broadcastToUser) {
+          global.broadcastToUser(listing.userId, {
+            type: 'job_progress',
+            data: {
+              jobId: job.id,
+              step: `Checking ${marketplace} connection`,
+              marketplace,
+              progress,
+              status: 'processing'
+            }
+          });
+        }
 
         const connection = connections.find(c => c.marketplace === marketplace && c.isConnected);
         if (!connection) {
           results.push({ marketplace, success: false, error: "No active connection" });
+          
+          // Emit connection error
+          if (global.broadcastToUser) {
+            global.broadcastToUser(listing.userId, {
+              type: 'job_progress',
+              data: {
+                jobId: job.id,
+                step: `No connection to ${marketplace}`,
+                marketplace,
+                progress,
+                status: 'error',
+                error: 'No active connection'
+              }
+            });
+          }
           continue;
         }
 
@@ -50,6 +96,21 @@ class PostListingProcessor implements JobProcessor {
             errorMessage: `Rate limited: ${rateLimitCheck.reasoning}. Rescheduled for ${rescheduleTime.toISOString()}`,
           });
           
+          // Emit rate limit notification
+          if (global.broadcastToUser) {
+            global.broadcastToUser(listing.userId, {
+              type: 'rate_limit',
+              data: {
+                jobId: job.id,
+                marketplace,
+                reason: rateLimitCheck.reasoning,
+                waitTime: rateLimitCheck.waitTime,
+                rescheduledFor: rescheduleTime.toISOString(),
+                status: 'rate_limited'
+              }
+            });
+          }
+          
           results.push({ 
             marketplace, 
             success: false, 
@@ -62,6 +123,22 @@ class PostListingProcessor implements JobProcessor {
         const optimalDelay = await rateLimitService.getOptimalDelay(marketplace, job.priority || 0);
         if (optimalDelay > 1000) { // Only delay if more than 1 second
           console.log(`Applying rate limit delay of ${optimalDelay}ms for ${marketplace}`);
+          
+          // Emit delay notification
+          if (global.broadcastToUser) {
+            global.broadcastToUser(listing.userId, {
+              type: 'job_progress',
+              data: {
+                jobId: job.id,
+                step: `Applying optimal delay for ${marketplace}`,
+                marketplace,
+                progress,
+                delayMs: optimalDelay,
+                status: 'delaying'
+              }
+            });
+          }
+          
           await new Promise(resolve => setTimeout(resolve, optimalDelay));
         }
 
@@ -78,6 +155,20 @@ class PostListingProcessor implements JobProcessor {
         });
 
         try {
+          // Emit posting attempt
+          if (global.broadcastToUser) {
+            global.broadcastToUser(listing.userId, {
+              type: 'job_progress',
+              data: {
+                jobId: job.id,
+                step: `Posting to ${marketplace}`,
+                marketplace,
+                progress,
+                status: 'posting'
+              }
+            });
+          }
+
           const result = await marketplaceService.createListing(listing, marketplace, connection);
           
           // Record successful API request
@@ -98,6 +189,22 @@ class PostListingProcessor implements JobProcessor {
             url: result.url 
           });
 
+          // Emit success notification
+          if (global.broadcastToUser) {
+            global.broadcastToUser(listing.userId, {
+              type: 'job_progress',
+              data: {
+                jobId: job.id,
+                step: `Successfully posted to ${marketplace}`,
+                marketplace,
+                externalId: result.externalId,
+                url: result.url,
+                progress: Math.round(((results.length) / marketplaces.length) * 100),
+                status: 'success'
+              }
+            });
+          }
+
         } catch (error) {
           // Record failed API request
           await rateLimitService.recordRequest(marketplace, false);
@@ -112,6 +219,21 @@ class PostListingProcessor implements JobProcessor {
               progress: 0,
               errorMessage: `Rate limited: ${error.message}. Rescheduled for ${rescheduleTime.toISOString()}`,
             });
+            
+            // Emit rate limit error
+            if (global.broadcastToUser) {
+              global.broadcastToUser(listing.userId, {
+                type: 'rate_limit',
+                data: {
+                  jobId: job.id,
+                  marketplace,
+                  reason: error.message,
+                  waitTime: error.waitTime,
+                  rescheduledFor: rescheduleTime.toISOString(),
+                  status: 'rate_limited_error'
+                }
+              });
+            }
           }
           
           // Update listing post with error
@@ -125,6 +247,21 @@ class PostListingProcessor implements JobProcessor {
             success: false, 
             error: error instanceof Error ? error.message : "Unknown error" 
           });
+          
+          // Emit posting error
+          if (global.broadcastToUser) {
+            global.broadcastToUser(listing.userId, {
+              type: 'job_progress',
+              data: {
+                jobId: job.id,
+                step: `Failed to post to ${marketplace}`,
+                marketplace,
+                progress: Math.round(((results.length) / marketplaces.length) * 100),
+                status: 'error',
+                error: error instanceof Error ? error.message : "Unknown error"
+              }
+            });
+          }
         }
       } catch (error) {
         results.push({ 
@@ -132,6 +269,21 @@ class PostListingProcessor implements JobProcessor {
           success: false, 
           error: error instanceof Error ? error.message : "Unknown error" 
         });
+        
+        // Emit general error
+        if (global.broadcastToUser) {
+          global.broadcastToUser(listing.userId, {
+            type: 'job_progress',
+            data: {
+              jobId: job.id,
+              step: `Error processing ${marketplace}`,
+              marketplace,
+              progress: Math.round(((results.length) / marketplaces.length) * 100),
+              status: 'error',
+              error: error instanceof Error ? error.message : "Unknown error"
+            }
+          });
+        }
       }
     }
 
@@ -148,6 +300,25 @@ class PostListingProcessor implements JobProcessor {
       result: { results, successCount: successfulPosts.length, totalCount: marketplaces.length },
       completedAt: new Date(),
     });
+
+    // Emit job completion
+    if (global.broadcastToUser) {
+      global.broadcastToUser(listing.userId, {
+        type: 'job_status',
+        data: {
+          jobId: job.id,
+          type: job.type,
+          status: 'completed',
+          listingId,
+          listingTitle: listing.title,
+          results,
+          successCount: successfulPosts.length,
+          totalCount: marketplaces.length,
+          progress: 100,
+          completedAt: new Date().toISOString()
+        }
+      });
+    }
 
     // Create audit log
     await storage.createAuditLog({
@@ -171,6 +342,22 @@ class DelistListingProcessor implements JobProcessor {
       throw new Error(`Listing ${listingId} not found`);
     }
 
+    // Emit delist job start notification
+    if (global.broadcastToUser) {
+      global.broadcastToUser(listing.userId, {
+        type: 'job_status',
+        data: {
+          jobId: job.id,
+          type: job.type,
+          status: 'started',
+          listingId,
+          listingTitle: listing.title,
+          marketplaces: marketplaces || ['all'],
+          progress: 0
+        }
+      });
+    }
+
     const listingPosts = await storage.getListingPosts(listingId);
     const postsToDelete = marketplaces 
       ? listingPosts.filter(p => marketplaces.includes(p.marketplace) && p.status === "posted")
@@ -183,6 +370,20 @@ class DelistListingProcessor implements JobProcessor {
       try {
         const progress = Math.round(((results.length) / postsToDelete.length) * 100);
         await storage.updateJob(job.id, { progress, status: "processing" });
+        
+        // Emit delisting progress
+        if (global.broadcastToUser) {
+          global.broadcastToUser(listing.userId, {
+            type: 'job_progress',
+            data: {
+              jobId: job.id,
+              step: `Delisting from ${post.marketplace}`,
+              marketplace: post.marketplace,
+              progress,
+              status: 'processing'
+            }
+          });
+        }
 
         const connection = connections.find(c => c.marketplace === post.marketplace && c.isConnected);
         if (!connection || !post.externalId) {
@@ -227,6 +428,20 @@ class DelistListingProcessor implements JobProcessor {
           });
 
           results.push({ marketplace: post.marketplace, success: true });
+          
+          // Emit delisting success
+          if (global.broadcastToUser) {
+            global.broadcastToUser(listing.userId, {
+              type: 'job_progress',
+              data: {
+                jobId: job.id,
+                step: `Successfully delisted from ${post.marketplace}`,
+                marketplace: post.marketplace,
+                progress: Math.round(((results.length) / postsToDelete.length) * 100),
+                status: 'success'
+              }
+            });
+          }
         } catch (deleteError) {
           // Record failed API request
           await rateLimitService.recordRequest(post.marketplace, false);
@@ -240,6 +455,36 @@ class DelistListingProcessor implements JobProcessor {
               progress: 0,
               errorMessage: `Rate limited: ${deleteError.message}. Rescheduled for ${rescheduleTime.toISOString()}`,
             });
+            
+            // Emit rate limit error for delist
+            if (global.broadcastToUser) {
+              global.broadcastToUser(listing.userId, {
+                type: 'rate_limit',
+                data: {
+                  jobId: job.id,
+                  marketplace: post.marketplace,
+                  reason: deleteError.message,
+                  waitTime: deleteError.waitTime,
+                  rescheduledFor: rescheduleTime.toISOString(),
+                  status: 'rate_limited_delist'
+                }
+              });
+            }
+          }
+          
+          // Emit delisting error
+          if (global.broadcastToUser) {
+            global.broadcastToUser(listing.userId, {
+              type: 'job_progress',
+              data: {
+                jobId: job.id,
+                step: `Failed to delist from ${post.marketplace}`,
+                marketplace: post.marketplace,
+                progress: Math.round(((results.length) / postsToDelete.length) * 100),
+                status: 'error',
+                error: deleteError instanceof Error ? deleteError.message : "Unknown error"
+              }
+            });
           }
           
           throw deleteError; // Re-throw to be caught by outer catch
@@ -251,6 +496,21 @@ class DelistListingProcessor implements JobProcessor {
           success: false, 
           error: error instanceof Error ? error.message : "Unknown error" 
         });
+        
+        // Emit general delisting error
+        if (global.broadcastToUser) {
+          global.broadcastToUser(listing.userId, {
+            type: 'job_progress',
+            data: {
+              jobId: job.id,
+              step: `Error delisting from ${post.marketplace}`,
+              marketplace: post.marketplace,
+              progress: Math.round(((results.length) / postsToDelete.length) * 100),
+              status: 'error',
+              error: error instanceof Error ? error.message : "Unknown error"
+            }
+          });
+        }
       }
     }
 

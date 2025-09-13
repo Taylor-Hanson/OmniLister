@@ -5,7 +5,7 @@ export class WebSocketManager {
   private reconnectDelay = 1000;
   private listeners: Map<string, Set<(data: any) => void>> = new Map();
 
-  constructor(private userId?: string) {}
+  constructor(private userId?: string, private token?: string) {}
 
   connect() {
     if (this.ws?.readyState === WebSocket.OPEN) {
@@ -22,8 +22,8 @@ export class WebSocketManager {
         console.log('WebSocket connected');
         this.reconnectAttempts = 0;
         
-        if (this.userId) {
-          this.send('subscribe', { userId: this.userId });
+        if (this.userId && this.token) {
+          this.send('subscribe', { token: this.token });
         }
         
         this.emit('connection', { connected: true });

@@ -1,39 +1,43 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import { useWebSocket } from "@/contexts/WebSocketContext";
 import StatsCards from "@/components/StatsCards";
 import MarketplaceStatus from "@/components/MarketplaceStatus";
+import RealTimeJobStatus from "@/components/RealTimeJobStatus";
+import MarketplaceHealthStatus from "@/components/MarketplaceHealthStatus";
+import LiveNotifications from "@/components/LiveNotifications";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Link } from "wouter";
+import type { Listing, Job, AuditLog } from "@shared/schema";
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { isConnected, lastMessage } = useWebSocket();
+  const { isConnected, lastMessage, jobStatuses, activeJobs, marketplaceHealth, requestStatus } = useWebSocket();
 
-  const { data: listings = [] } = useQuery({
+  const { data: listings = [] } = useQuery<Listing[]>({
     queryKey: ['/api/listings'],
     enabled: !!user,
   });
 
-  const { data: jobs = [] } = useQuery({
+  const { data: jobs = [] } = useQuery<Job[]>({
     queryKey: ['/api/jobs'],
     enabled: !!user,
   });
 
-  const { data: auditLogs = [] } = useQuery({
+  const { data: auditLogs = [] } = useQuery<AuditLog[]>({
     queryKey: ['/api/audit-logs'],
     enabled: !!user,
   });
 
   const recentListings = listings
-    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
     .slice(0, 5);
 
   const recentJobs = jobs
-    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
     .slice(0, 5);
 
   const getStatusColor = (status: string) => {
@@ -51,20 +55,47 @@ export default function Dashboard() {
     <div className="p-4 sm:p-6 lg:p-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground mt-2">
-          Monitor your crosslisting performance across all marketplaces
-          {isConnected && (
-            <span className="ml-2 inline-flex items-center text-green-600">
-              <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
-              Live
-            </span>
-          )}
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
+            <p className="text-muted-foreground mt-2">
+              Monitor your crosslisting performance across all marketplaces
+              {isConnected && (
+                <span className="ml-2 inline-flex items-center text-green-600">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
+                  Live
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            {Object.keys(jobStatuses).length > 0 && (
+              <Badge variant="outline" className="bg-blue-50 dark:bg-blue-900/20" data-testid="badge-active-job-count">
+                {Object.keys(jobStatuses).length} Active Jobs
+              </Badge>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={requestStatus}
+              disabled={!isConnected}
+              data-testid="button-refresh-status"
+            >
+              Refresh Status
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Stats Cards */}
       <StatsCards />
+
+      {/* Real-Time Status Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mt-8 mb-8">
+        <RealTimeJobStatus />
+        <MarketplaceHealthStatus />
+        <LiveNotifications />
+      </div>
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-8">
@@ -270,7 +301,7 @@ export default function Dashboard() {
                     <p>No recent activity</p>
                   </div>
                 ) : (
-                  auditLogs.slice(0, 5).map((log: any) => (
+                  auditLogs.slice(0, 5).map((log) => (
                     <div key={log.id} className="flex items-start space-x-3">
                       <div className="w-8 h-8 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0">
                         <i className="fas fa-check text-accent text-sm"></i>
@@ -278,7 +309,7 @@ export default function Dashboard() {
                       <div className="flex-1">
                         <p className="text-sm text-foreground">{log.action.replace('_', ' ')}</p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(log.createdAt), 'h:mm a')}
+                          {log.createdAt ? format(new Date(log.createdAt), 'h:mm a') : 'Unknown time'}
                         </p>
                       </div>
                     </div>
