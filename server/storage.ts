@@ -25,7 +25,9 @@ import {
   type BulkUpload, type InsertBulkUpload,
   type BatchTemplate, type InsertBatchTemplate,
   type BatchAnalytics, type InsertBatchAnalytics,
-  type BatchQueue, type InsertBatchQueue
+  type BatchQueue, type InsertBatchQueue,
+  type CrossPlatformSyncJob, type InsertCrossPlatformSyncJob,
+  type CrossPlatformSyncHistory, type InsertCrossPlatformSyncHistory
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -376,6 +378,28 @@ export interface IStorage {
   deleteBatchQueueEntry(batchId: string): Promise<void>;
   getNextBatchForProcessing(): Promise<BatchQueue | undefined>;
   updateQueuePositions(): Promise<void>;
+
+  // Cross-Platform Sync Job methods
+  getCrossPlatformSyncJobs(userId: string, filters?: { status?: string; syncType?: string; soldMarketplace?: string }): Promise<CrossPlatformSyncJob[]>;
+  getCrossPlatformSyncJob(id: string): Promise<CrossPlatformSyncJob | undefined>;
+  createCrossPlatformSyncJob(userId: string, job: InsertCrossPlatformSyncJob): Promise<CrossPlatformSyncJob>;
+  updateCrossPlatformSyncJob(id: string, updates: Partial<CrossPlatformSyncJob>): Promise<CrossPlatformSyncJob>;
+  deleteCrossPlatformSyncJob(id: string): Promise<void>;
+
+  // Cross-Platform Sync History methods
+  getCrossPlatformSyncHistory(syncJobId?: string, userId?: string, filters?: { status?: string; targetMarketplace?: string; startDate?: Date; endDate?: Date }): Promise<CrossPlatformSyncHistory[]>;
+  createCrossPlatformSyncHistory(userId: string, history: InsertCrossPlatformSyncHistory): Promise<CrossPlatformSyncHistory>;
+  
+  // Cross-Platform Sync Analytics methods
+  getCrossPlatformSyncStats(userId: string, days?: number): Promise<{
+    totalSyncs: number;
+    successfulSyncs: number;
+    failedSyncs: number;
+    partialSyncs: number;
+    avgSyncTime: number;
+    topMarketplaces: Array<{ marketplace: string; count: number }>;
+    recentSyncs: CrossPlatformSyncJob[];
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -410,6 +434,10 @@ export class MemStorage implements IStorage {
   private retryMetrics: Map<string, RetryMetrics> = new Map();
   private failureCategories: Map<string, FailureCategory> = new Map();
   private marketplaceRetryConfig: Map<string, MarketplaceRetryConfig> = new Map();
+
+  // Cross-Platform Sync storage
+  private crossPlatformSyncJobs: Map<string, CrossPlatformSyncJob> = new Map();
+  private crossPlatformSyncHistory: Map<string, CrossPlatformSyncHistory> = new Map();
 
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
@@ -2268,6 +2296,155 @@ export class MemStorage implements IStorage {
     const updated = { ...existing, ...updates, updatedAt: new Date() };
     this.marketplaceRetryConfig.set(existing.id, updated);
     return updated;
+  }
+
+  // Cross-Platform Sync Job methods
+  async getCrossPlatformSyncJobs(userId: string, filters?: { status?: string; syncType?: string; soldMarketplace?: string }): Promise<CrossPlatformSyncJob[]> {
+    let jobs = Array.from(this.crossPlatformSyncJobs.values()).filter(job => job.userId === userId);
+    
+    if (filters?.status) {
+      jobs = jobs.filter(job => job.status === filters.status);
+    }
+    if (filters?.syncType) {
+      jobs = jobs.filter(job => job.syncType === filters.syncType);
+    }
+    if (filters?.soldMarketplace) {
+      jobs = jobs.filter(job => job.soldMarketplace === filters.soldMarketplace);
+    }
+    
+    return jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getCrossPlatformSyncJob(id: string): Promise<CrossPlatformSyncJob | undefined> {
+    return this.crossPlatformSyncJobs.get(id);
+  }
+
+  async createCrossPlatformSyncJob(userId: string, job: InsertCrossPlatformSyncJob): Promise<CrossPlatformSyncJob> {
+    const id = randomUUID();
+    const syncJob: CrossPlatformSyncJob = {
+      ...job,
+      id,
+      status: job.status || 'pending',
+      totalMarketplaces: job.totalMarketplaces || 0,
+      completedMarketplaces: job.completedMarketplaces || 0,
+      failedMarketplaces: job.failedMarketplaces || 0,
+      priority: job.priority || 5,
+      startedAt: null,
+      completedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.crossPlatformSyncJobs.set(id, syncJob);
+    return syncJob;
+  }
+
+  async updateCrossPlatformSyncJob(id: string, updates: Partial<CrossPlatformSyncJob>): Promise<CrossPlatformSyncJob> {
+    const job = this.crossPlatformSyncJobs.get(id);
+    if (!job) {
+      throw new Error('Cross-platform sync job not found');
+    }
+    const updatedJob = { ...job, ...updates, updatedAt: new Date() };
+    this.crossPlatformSyncJobs.set(id, updatedJob);
+    return updatedJob;
+  }
+
+  async deleteCrossPlatformSyncJob(id: string): Promise<void> {
+    this.crossPlatformSyncJobs.delete(id);
+  }
+
+  // Cross-Platform Sync History methods
+  async getCrossPlatformSyncHistory(syncJobId?: string, userId?: string, filters?: { status?: string; targetMarketplace?: string; startDate?: Date; endDate?: Date }): Promise<CrossPlatformSyncHistory[]> {
+    let history = Array.from(this.crossPlatformSyncHistory.values());
+    
+    if (syncJobId) {
+      history = history.filter(entry => entry.syncJobId === syncJobId);
+    }
+    if (userId) {
+      history = history.filter(entry => entry.userId === userId);
+    }
+    if (filters?.status) {
+      history = history.filter(entry => entry.status === filters.status);
+    }
+    if (filters?.targetMarketplace) {
+      history = history.filter(entry => entry.targetMarketplace === filters.targetMarketplace);
+    }
+    if (filters?.startDate) {
+      history = history.filter(entry => entry.createdAt >= filters.startDate!);
+    }
+    if (filters?.endDate) {
+      history = history.filter(entry => entry.createdAt <= filters.endDate!);
+    }
+    
+    return history.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async createCrossPlatformSyncHistory(userId: string, history: InsertCrossPlatformSyncHistory): Promise<CrossPlatformSyncHistory> {
+    const id = randomUUID();
+    const syncHistory: CrossPlatformSyncHistory = {
+      ...history,
+      id,
+      retryAttempt: history.retryAttempt || 0,
+      maxRetries: history.maxRetries || 3,
+      createdAt: new Date(),
+    };
+    this.crossPlatformSyncHistory.set(id, syncHistory);
+    return syncHistory;
+  }
+
+  // Cross-Platform Sync Analytics methods
+  async getCrossPlatformSyncStats(userId: string, days: number = 30): Promise<{
+    totalSyncs: number;
+    successfulSyncs: number;
+    failedSyncs: number;
+    partialSyncs: number;
+    avgSyncTime: number;
+    topMarketplaces: Array<{ marketplace: string; count: number }>;
+    recentSyncs: CrossPlatformSyncJob[];
+  }> {
+    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const syncJobs = Array.from(this.crossPlatformSyncJobs.values())
+      .filter(job => job.userId === userId && job.createdAt >= startDate);
+
+    const totalSyncs = syncJobs.length;
+    const successfulSyncs = syncJobs.filter(job => job.status === 'completed').length;
+    const failedSyncs = syncJobs.filter(job => job.status === 'failed').length;
+    const partialSyncs = syncJobs.filter(job => job.status === 'partial').length;
+
+    // Calculate average sync time for completed jobs
+    const completedJobs = syncJobs.filter(job => job.actualDuration);
+    const avgSyncTime = completedJobs.length > 0 
+      ? completedJobs.reduce((sum, job) => sum + (job.actualDuration || 0), 0) / completedJobs.length 
+      : 0;
+
+    // Get top marketplaces from sync history
+    const syncHistory = Array.from(this.crossPlatformSyncHistory.values())
+      .filter(entry => entry.userId === userId && entry.createdAt >= startDate);
+    
+    const marketplaceCounts = new Map<string, number>();
+    syncHistory.forEach(entry => {
+      const current = marketplaceCounts.get(entry.targetMarketplace) || 0;
+      marketplaceCounts.set(entry.targetMarketplace, current + 1);
+    });
+
+    const topMarketplaces = Array.from(marketplaceCounts.entries())
+      .map(([marketplace, count]) => ({ marketplace, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Get recent syncs
+    const recentSyncs = syncJobs
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, 10);
+
+    return {
+      totalSyncs,
+      successfulSyncs,
+      failedSyncs,
+      partialSyncs,
+      avgSyncTime,
+      topMarketplaces,
+      recentSyncs
+    };
   }
 }
 
