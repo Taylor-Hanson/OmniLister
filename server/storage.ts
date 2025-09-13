@@ -20,6 +20,12 @@ import {
   type PostingSuccessAnalytics, type InsertPostingSuccessAnalytics,
   type RateLimitTracker, type InsertRateLimitTracker,
   type QueueDistribution, type InsertQueueDistribution,
+  type JobRetryHistory, type InsertJobRetryHistory,
+  type CircuitBreakerStatus, type InsertCircuitBreakerStatus,
+  type DeadLetterQueue, type InsertDeadLetterQueue,
+  type RetryMetrics, type InsertRetryMetrics,
+  type FailureCategory, type InsertFailureCategory,
+  type MarketplaceRetryConfig, type InsertMarketplaceRetryConfig,
   type Batch, type InsertBatch,
   type BatchItem, type InsertBatchItem,
   type BulkUpload, type InsertBulkUpload,
@@ -39,6 +45,7 @@ import { randomUUID } from "crypto";
 export interface IStorage {
   // User methods
   getUser(id: string): Promise<User | undefined>;
+  getUserById(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -67,6 +74,7 @@ export interface IStorage {
 
   // Job methods
   getJobs(userId?: string, filters?: { status?: string; type?: string }): Promise<Job[]>;
+  getUserJobs(userId: string, filters?: { status?: string; type?: string }): Promise<Job[]>;
   getJob(id: string): Promise<Job | undefined>;
   createJob(userId: string, job: InsertJob): Promise<Job>;
   updateJob(id: string, updates: Partial<Job>): Promise<Job>;
@@ -510,6 +518,10 @@ export class MemStorage implements IStorage {
     return this.users.get(id);
   }
 
+  async getUserById(id: string): Promise<User | undefined> {
+    return this.users.get(id);
+  }
+
   async getUserByEmail(email: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(user => user.email === email);
   }
@@ -675,6 +687,20 @@ export class MemStorage implements IStorage {
     if (userId) {
       jobs = jobs.filter(job => job.userId === userId);
     }
+    
+    if (filters?.status) {
+      jobs = jobs.filter(job => job.status === filters.status);
+    }
+    
+    if (filters?.type) {
+      jobs = jobs.filter(job => job.type === filters.type);
+    }
+    
+    return jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getUserJobs(userId: string, filters?: { status?: string; type?: string }): Promise<Job[]> {
+    let jobs = Array.from(this.jobs.values()).filter(job => job.userId === userId);
     
     if (filters?.status) {
       jobs = jobs.filter(job => job.status === filters.status);
@@ -1177,6 +1203,479 @@ export class MemStorage implements IStorage {
   }
 
   // Usage tracking methods
+  async canCreateListing(userId: string): Promise<boolean> {
+    const user = await this.getUser(userId);
+    if (!user) return false;
+    if (user.plan === 'unlimited' || user.listingCredits === null) return true;
+    return (user.listingsUsedThisMonth || 0) < (user.listingCredits || 0);
+  }
+
+  async incrementListingUsage(userId: string): Promise<void> {
+    const user = await this.getUser(userId);
+    if (user) {
+      await this.updateUser(userId, { 
+        listingsUsedThisMonth: (user.listingsUsedThisMonth || 0) + 1 
+      });
+    }
+  }
+
+  async resetMonthlyUsage(userId: string): Promise<void> {
+    await this.updateUser(userId, { 
+      listingsUsedThisMonth: 0, 
+      billingCycleStart: new Date() 
+    });
+  }
+
+  async checkAndResetBillingCycle(userId: string): Promise<void> {
+    const user = await this.getUser(userId);
+    if (user && user.billingCycleStart) {
+      const now = new Date();
+      const cycleStart = new Date(user.billingCycleStart);
+      const daysSince = Math.floor((now.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (daysSince >= 30) {
+        await this.resetMonthlyUsage(userId);
+      }
+    }
+  }
+
+  // Rate Limit Tracker methods
+  async getRateLimitTracker(marketplace: string, windowType: string = 'hourly'): Promise<RateLimitTracker | undefined> {
+    return Array.from(this.rateLimitTrackers.values()).find(
+      tracker => tracker.marketplace === marketplace && tracker.windowType === windowType
+    );
+  }
+
+  async createRateLimitTracker(tracker: InsertRateLimitTracker): Promise<RateLimitTracker> {
+    const id = randomUUID();
+    const rateLimitTracker: RateLimitTracker = {
+      ...tracker,
+      id,
+      createdAt: new Date(),
+    };
+    this.rateLimitTrackers.set(id, rateLimitTracker);
+    return rateLimitTracker;
+  }
+
+  async updateRateLimitTracker(marketplace: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker> {
+    const tracker = await this.getRateLimitTracker(marketplace);
+    if (!tracker) {
+      throw new Error('Rate limit tracker not found');
+    }
+    const updated = { ...tracker, ...updates };
+    this.rateLimitTrackers.set(tracker.id, updated);
+    return updated;
+  }
+
+  async updateRateLimitTrackerById(id: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker> {
+    const tracker = this.rateLimitTrackers.get(id);
+    if (!tracker) {
+      throw new Error('Rate limit tracker not found');
+    }
+    const updated = { ...tracker, ...updates };
+    this.rateLimitTrackers.set(id, updated);
+    return updated;
+  }
+
+  async getCurrentRateLimits(marketplaces: string[]): Promise<Record<string, RateLimitTracker | null>> {
+    const result: Record<string, RateLimitTracker | null> = {};
+    for (const marketplace of marketplaces) {
+      result[marketplace] = await this.getRateLimitTracker(marketplace) || null;
+    }
+    return result;
+  }
+
+  async getRateLimitUsageInWindow(marketplace: string, startTime: Date, endTime: Date): Promise<number> {
+    const trackers = Array.from(this.rateLimitTrackers.values()).filter(
+      tracker => tracker.marketplace === marketplace &&
+      new Date(tracker.timeWindow) >= startTime &&
+      new Date(tracker.timeWindow) <= endTime
+    );
+    return trackers.reduce((sum, tracker) => sum + (tracker.requestCount || 0), 0);
+  }
+
+  async getAllRateLimitTrackers(marketplace?: string): Promise<RateLimitTracker[]> {
+    let trackers = Array.from(this.rateLimitTrackers.values());
+    if (marketplace) {
+      trackers = trackers.filter(tracker => tracker.marketplace === marketplace);
+    }
+    return trackers.sort((a, b) => new Date(b.timeWindow).getTime() - new Date(a.timeWindow).getTime());
+  }
+
+  async cleanupOldRateLimitTrackers(olderThan: Date): Promise<number> {
+    let deletedCount = 0;
+    for (const [id, tracker] of this.rateLimitTrackers.entries()) {
+      if (new Date(tracker.timeWindow) < olderThan) {
+        this.rateLimitTrackers.delete(id);
+        deletedCount++;
+      }
+    }
+    return deletedCount;
+  }
+
+  // Queue Distribution methods  
+  async getQueueDistribution(timeSlot: Date, marketplace?: string): Promise<QueueDistribution[]> {
+    let distributions = Array.from(this.queueDistributions.values()).filter(
+      dist => new Date(dist.timeSlot).getTime() === timeSlot.getTime()
+    );
+    if (marketplace) {
+      distributions = distributions.filter(dist => dist.marketplace === marketplace);
+    }
+    return distributions;
+  }
+
+  async createQueueDistribution(distribution: InsertQueueDistribution): Promise<QueueDistribution> {
+    const id = randomUUID();
+    const queueDistribution: QueueDistribution = {
+      ...distribution,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.queueDistributions.set(id, queueDistribution);
+    return queueDistribution;
+  }
+
+  async updateQueueDistribution(id: string, updates: Partial<QueueDistribution>): Promise<QueueDistribution> {
+    const distribution = this.queueDistributions.get(id);
+    if (!distribution) {
+      throw new Error('Queue distribution not found');
+    }
+    const updated = { ...distribution, ...updates, updatedAt: new Date() };
+    this.queueDistributions.set(id, updated);
+    return updated;
+  }
+
+  async getAvailableTimeSlots(marketplace: string, startTime: Date, endTime: Date): Promise<QueueDistribution[]> {
+    return Array.from(this.queueDistributions.values()).filter(
+      dist => dist.marketplace === marketplace &&
+      new Date(dist.timeSlot) >= startTime &&
+      new Date(dist.timeSlot) <= endTime &&
+      dist.isAvailable &&
+      (dist.scheduledJobs || 0) < (dist.maxCapacity || 10)
+    );
+  }
+
+  // Smart Scheduling methods - Marketplace Posting Rules
+  async getMarketplacePostingRules(marketplace?: string): Promise<MarketplacePostingRules[]> {
+    let rules = Array.from(this.marketplacePostingRules.values());
+    if (marketplace) {
+      rules = rules.filter(rule => rule.marketplace === marketplace);
+    }
+    return rules.filter(rule => rule.isActive);
+  }
+
+  async getMarketplacePostingRule(marketplace: string): Promise<MarketplacePostingRules | undefined> {
+    return Array.from(this.marketplacePostingRules.values()).find(
+      rule => rule.marketplace === marketplace && rule.isActive
+    );
+  }
+
+  async createMarketplacePostingRules(rules: InsertMarketplacePostingRules): Promise<MarketplacePostingRules> {
+    const id = randomUUID();
+    const marketplaceRules: MarketplacePostingRules = {
+      ...rules,
+      id,
+      createdAt: new Date(),
+      lastUpdated: new Date(),
+    };
+    this.marketplacePostingRules.set(id, marketplaceRules);
+    return marketplaceRules;
+  }
+
+  async updateMarketplacePostingRules(marketplace: string, updates: Partial<MarketplacePostingRules>): Promise<MarketplacePostingRules> {
+    const rules = await this.getMarketplacePostingRule(marketplace);
+    if (!rules) {
+      throw new Error('Marketplace posting rules not found');
+    }
+    const updated = { ...rules, ...updates, lastUpdated: new Date() };
+    this.marketplacePostingRules.set(rules.id, updated);
+    return updated;
+  }
+
+  // Posting Success Analytics methods
+  async createPostingSuccessAnalytics(userId: string, analytics: InsertPostingSuccessAnalytics): Promise<PostingSuccessAnalytics> {
+    const id = randomUUID();
+    const successAnalytics: PostingSuccessAnalytics = {
+      ...analytics,
+      id,
+      userId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.postingSuccessAnalytics.set(id, successAnalytics);
+    return successAnalytics;
+  }
+
+  async getPostingSuccessAnalytics(userId: string, filters?: { 
+    marketplace?: string; 
+    marketplaces?: string[];
+    categories?: string[];
+    startDate?: Date; 
+    endDate?: Date; 
+    category?: string;
+    listingId?: string;
+    dayOfWeek?: number;
+    hourOfDay?: number;
+    priceRange?: string;
+    minEngagement?: number;
+    sold?: boolean;
+    limit?: number;
+  }): Promise<PostingSuccessAnalytics[]> {
+    let analytics = Array.from(this.postingSuccessAnalytics.values()).filter(a => a.userId === userId);
+    
+    if (filters?.marketplace) {
+      analytics = analytics.filter(a => a.marketplace === filters.marketplace);
+    }
+    if (filters?.marketplaces) {
+      analytics = analytics.filter(a => filters.marketplaces!.includes(a.marketplace));
+    }
+    if (filters?.category) {
+      analytics = analytics.filter(a => a.category === filters.category);
+    }
+    if (filters?.categories) {
+      analytics = analytics.filter(a => filters.categories!.includes(a.category || ''));
+    }
+    if (filters?.startDate) {
+      analytics = analytics.filter(a => new Date(a.postedAt) >= filters.startDate!);
+    }
+    if (filters?.endDate) {
+      analytics = analytics.filter(a => new Date(a.postedAt) <= filters.endDate!);
+    }
+    if (filters?.listingId) {
+      analytics = analytics.filter(a => a.listingId === filters.listingId);
+    }
+    if (filters?.dayOfWeek !== undefined) {
+      analytics = analytics.filter(a => a.dayOfWeek === filters.dayOfWeek);
+    }
+    if (filters?.hourOfDay !== undefined) {
+      analytics = analytics.filter(a => a.hourOfDay === filters.hourOfDay);
+    }
+    if (filters?.priceRange) {
+      analytics = analytics.filter(a => a.priceRange === filters.priceRange);
+    }
+    if (filters?.minEngagement) {
+      analytics = analytics.filter(a => parseFloat(String(a.engagement_score)) >= filters.minEngagement!);
+    }
+    if (filters?.sold !== undefined) {
+      analytics = analytics.filter(a => a.sold === filters.sold);
+    }
+    
+    const sorted = analytics.sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+    return filters?.limit ? sorted.slice(0, filters.limit) : sorted;
+  }
+
+  async updatePostingSuccessAnalytics(id: string, updates: Partial<PostingSuccessAnalytics>): Promise<PostingSuccessAnalytics> {
+    const analytics = this.postingSuccessAnalytics.get(id);
+    if (!analytics) {
+      throw new Error('Posting success analytics not found');
+    }
+    const updated = { ...analytics, ...updates, updatedAt: new Date() };
+    this.postingSuccessAnalytics.set(id, updated);
+    return updated;
+  }
+
+  // Job Retry History methods
+  async createJobRetryHistory(history: InsertJobRetryHistory): Promise<JobRetryHistory> {
+    const id = randomUUID();
+    const retryHistory: JobRetryHistory = {
+      ...history,
+      id,
+      timestamp: new Date(),
+    };
+    this.jobRetryHistory.set(id, retryHistory);
+    return retryHistory;
+  }
+
+  async getJobRetryHistory(jobId: string): Promise<JobRetryHistory[]> {
+    return Array.from(this.jobRetryHistory.values())
+      .filter(history => history.jobId === jobId)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+
+  // Circuit Breaker methods
+  async getCircuitBreakerStatus(marketplace: string): Promise<CircuitBreakerStatus | undefined> {
+    return Array.from(this.circuitBreakerStatus.values())
+      .find(status => status.marketplace === marketplace);
+  }
+
+  async updateCircuitBreaker(marketplace: string, updates: Partial<CircuitBreakerStatus>): Promise<CircuitBreakerStatus> {
+    const status = await this.getCircuitBreakerStatus(marketplace);
+    if (!status) {
+      throw new Error('Circuit breaker status not found');
+    }
+    const updated = { ...status, ...updates, updatedAt: new Date() };
+    this.circuitBreakerStatus.set(status.id, updated);
+    return updated;
+  }
+
+  async getAllCircuitBreakerStatuses(): Promise<CircuitBreakerStatus[]> {
+    return Array.from(this.circuitBreakerStatus.values());
+  }
+
+  async createCircuitBreakerStatus(status: InsertCircuitBreakerStatus): Promise<CircuitBreakerStatus> {
+    const id = randomUUID();
+    const circuitBreaker: CircuitBreakerStatus = {
+      ...status,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.circuitBreakerStatus.set(id, circuitBreaker);
+    return circuitBreaker;
+  }
+
+  // Dead Letter Queue methods
+  async getDeadLetterQueueEntries(userId?: string, filters?: { resolutionStatus?: string; requiresManualReview?: boolean }): Promise<DeadLetterQueue[]> {
+    let entries = Array.from(this.deadLetterQueue.values());
+    
+    if (userId) {
+      entries = entries.filter(entry => entry.userId === userId);
+    }
+    if (filters?.resolutionStatus) {
+      entries = entries.filter(entry => entry.resolutionStatus === filters.resolutionStatus);
+    }
+    if (filters?.requiresManualReview !== undefined) {
+      entries = entries.filter(entry => entry.requiresManualReview === filters.requiresManualReview);
+    }
+    
+    return entries.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  async createDeadLetterQueue(entry: InsertDeadLetterQueue): Promise<DeadLetterQueue> {
+    const id = randomUUID();
+    const deadLetter: DeadLetterQueue = {
+      ...entry,
+      id,
+      createdAt: new Date(),
+    };
+    this.deadLetterQueue.set(id, deadLetter);
+    return deadLetter;
+  }
+
+  async updateDeadLetterQueueEntry(id: string, updates: Partial<DeadLetterQueue>): Promise<DeadLetterQueue> {
+    const entry = this.deadLetterQueue.get(id);
+    if (!entry) {
+      throw new Error('Dead letter queue entry not found');
+    }
+    const updated = { ...entry, ...updates };
+    this.deadLetterQueue.set(id, updated);
+    return updated;
+  }
+
+  async getDeadLetterQueueStats(userId?: string): Promise<{ total: number; pending: number; resolved: number; requiresReview: number }> {
+    let entries = Array.from(this.deadLetterQueue.values());
+    if (userId) {
+      entries = entries.filter(entry => entry.userId === userId);
+    }
+    
+    return {
+      total: entries.length,
+      pending: entries.filter(e => e.resolutionStatus === 'pending').length,
+      resolved: entries.filter(e => e.resolutionStatus === 'resolved').length,
+      requiresReview: entries.filter(e => e.requiresManualReview).length,
+    };
+  }
+
+  async cleanupOldEntries(olderThan: Date): Promise<number> {
+    let deletedCount = 0;
+    for (const [id, entry] of this.deadLetterQueue.entries()) {
+      if (new Date(entry.createdAt) < olderThan && entry.resolutionStatus === 'resolved') {
+        this.deadLetterQueue.delete(id);
+        deletedCount++;
+      }
+    }
+    return deletedCount;
+  }
+
+  // Retry Metrics methods
+  async createRetryMetrics(metrics: InsertRetryMetrics): Promise<RetryMetrics> {
+    const id = randomUUID();
+    const retryMetrics: RetryMetrics = {
+      ...metrics,
+      id,
+      createdAt: new Date(),
+    };
+    this.retryMetrics.set(id, retryMetrics);
+    return retryMetrics;
+  }
+
+  async getRetryMetrics(filters?: { marketplace?: string; jobType?: string; timeWindow?: Date }): Promise<RetryMetrics[]> {
+    let metrics = Array.from(this.retryMetrics.values());
+    
+    if (filters?.marketplace) {
+      metrics = metrics.filter(m => m.marketplace === filters.marketplace);
+    }
+    if (filters?.jobType) {
+      metrics = metrics.filter(m => m.jobType === filters.jobType);
+    }
+    if (filters?.timeWindow) {
+      metrics = metrics.filter(m => new Date(m.timeWindow).getTime() === filters.timeWindow!.getTime());
+    }
+    
+    return metrics.sort((a, b) => new Date(b.timeWindow).getTime() - new Date(a.timeWindow).getTime());
+  }
+
+  // Failure Category methods
+  async getFailureCategories(): Promise<FailureCategory[]> {
+    return Array.from(this.failureCategories.values()).filter(cat => cat.isActive);
+  }
+
+  async getFailureCategory(category: string): Promise<FailureCategory | undefined> {
+    return Array.from(this.failureCategories.values()).find(c => c.category === category && c.isActive);
+  }
+
+  async createFailureCategory(category: InsertFailureCategory): Promise<FailureCategory> {
+    const id = randomUUID();
+    const failureCategory: FailureCategory = {
+      ...category,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.failureCategories.set(id, failureCategory);
+    return failureCategory;
+  }
+
+  async updateFailureCategory(id: string, updates: Partial<FailureCategory>): Promise<FailureCategory> {
+    const category = this.failureCategories.get(id);
+    if (!category) {
+      throw new Error('Failure category not found');
+    }
+    const updated = { ...category, ...updates, updatedAt: new Date() };
+    this.failureCategories.set(id, updated);
+    return updated;
+  }
+
+  // Marketplace Retry Config methods
+  async getMarketplaceRetryConfig(marketplace: string): Promise<MarketplaceRetryConfig | undefined> {
+    return Array.from(this.marketplaceRetryConfig.values())
+      .find(config => config.marketplace === marketplace && config.isActive);
+  }
+
+  async createMarketplaceRetryConfig(config: InsertMarketplaceRetryConfig): Promise<MarketplaceRetryConfig> {
+    const id = randomUUID();
+    const retryConfig: MarketplaceRetryConfig = {
+      ...config,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.marketplaceRetryConfig.set(id, retryConfig);
+    return retryConfig;
+  }
+
+  async updateMarketplaceRetryConfig(marketplace: string, updates: Partial<MarketplaceRetryConfig>): Promise<MarketplaceRetryConfig> {
+    const config = await this.getMarketplaceRetryConfig(marketplace);
+    if (!config) {
+      throw new Error('Marketplace retry config not found');
+    }
+    const updated = { ...config, ...updates, updatedAt: new Date() };
+    this.marketplaceRetryConfig.set(config.id, updated);
+    return updated;
+  }
+
+  // Fix missing canCreateListing method that got corrupted
   async canCreateListing(userId: string): Promise<boolean> {
     const user = await this.getUser(userId);
     if (!user) return false;
