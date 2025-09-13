@@ -334,6 +334,125 @@ export const marketplaceMetrics = pgTable("marketplace_metrics", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Job Retry History - Track all retry attempts with detailed failure categorization
+export const jobRetryHistory = pgTable("job_retry_history", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobId: uuid("job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  attemptNumber: integer("attempt_number").notNull(),
+  failureCategory: text("failure_category").notNull(), // permanent, temporary, rate_limit, auth, network, validation, marketplace_error
+  errorType: text("error_type"), // More specific error classification
+  errorMessage: text("error_message"),
+  errorCode: text("error_code"), // HTTP status or marketplace error code
+  marketplace: text("marketplace"),
+  retryDelay: integer("retry_delay"), // Actual delay used in milliseconds
+  nextRetryAt: timestamp("next_retry_at"),
+  stackTrace: text("stack_trace"),
+  requestData: jsonb("request_data"), // Request data that caused the failure
+  responseData: jsonb("response_data"), // Response data if available
+  contextData: jsonb("context_data"), // Additional context like rate limit headers
+  processingDuration: integer("processing_duration"), // How long the attempt took in milliseconds
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+// Failure Categories - Define failure types and their retry strategies
+export const failureCategories = pgTable("failure_categories", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  category: text("category").notNull().unique(), // permanent, temporary, rate_limit, auth, network, validation, marketplace_error
+  description: text("description").notNull(),
+  shouldRetry: boolean("should_retry").default(true),
+  maxRetries: integer("max_retries").default(3),
+  baseDelayMs: integer("base_delay_ms").default(1000), // Base delay in milliseconds
+  maxDelayMs: integer("max_delay_ms").default(300000), // Max delay (5 minutes)
+  backoffMultiplier: decimal("backoff_multiplier", { precision: 3, scale: 2 }).default("2.0"),
+  jitterRange: decimal("jitter_range", { precision: 3, scale: 2 }).default("0.1"), // 10% jitter
+  requiresUserIntervention: boolean("requires_user_intervention").default(false),
+  circuitBreakerEnabled: boolean("circuit_breaker_enabled").default(false),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Circuit Breaker Status - Track circuit breaker state per marketplace
+export const circuitBreakerStatus = pgTable("circuit_breaker_status", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketplace: text("marketplace").notNull().unique(),
+  status: text("status").default("closed"), // closed, open, half_open
+  failureCount: integer("failure_count").default(0),
+  successCount: integer("success_count").default(0),
+  lastFailureAt: timestamp("last_failure_at"),
+  lastSuccessAt: timestamp("last_success_at"),
+  openedAt: timestamp("opened_at"),
+  nextRetryAt: timestamp("next_retry_at"),
+  failureThreshold: integer("failure_threshold").default(5), // Failures before opening
+  recoveryThreshold: integer("recovery_threshold").default(3), // Successes before closing
+  timeoutMs: integer("timeout_ms").default(60000), // 1 minute timeout
+  halfOpenMaxRequests: integer("half_open_max_requests").default(3),
+  currentHalfOpenRequests: integer("current_half_open_requests").default(0),
+  metadata: jsonb("metadata"), // Additional marketplace-specific data
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Dead Letter Queue - Store repeatedly failing jobs
+export const deadLetterQueue = pgTable("dead_letter_queue", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  originalJobId: uuid("original_job_id").notNull().references(() => jobs.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  jobType: text("job_type").notNull(),
+  jobData: jsonb("job_data").notNull(),
+  finalFailureCategory: text("final_failure_category").notNull(),
+  totalAttempts: integer("total_attempts").notNull(),
+  firstFailureAt: timestamp("first_failure_at").notNull(),
+  lastFailureAt: timestamp("last_failure_at").notNull(),
+  failureHistory: jsonb("failure_history"), // Summary of all retry attempts
+  requiresManualReview: boolean("requires_manual_review").default(true),
+  resolutionStatus: text("resolution_status").default("pending"), // pending, resolved, discarded
+  resolutionNotes: text("resolution_notes"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: uuid("resolved_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Retry Metrics - Aggregate metrics for retry patterns and success rates
+export const retryMetrics = pgTable("retry_metrics", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketplace: text("marketplace").notNull(),
+  jobType: text("job_type").notNull(),
+  failureCategory: text("failure_category").notNull(),
+  timeWindow: timestamp("time_window").notNull(), // Hour window start
+  totalAttempts: integer("total_attempts").default(0),
+  successfulRetries: integer("successful_retries").default(0),
+  failedRetries: integer("failed_retries").default(0),
+  avgRetryDelay: decimal("avg_retry_delay", { precision: 10, scale: 2 }).default("0"),
+  maxRetryDelay: integer("max_retry_delay").default(0),
+  minRetryDelay: integer("min_retry_delay").default(0),
+  avgProcessingTime: decimal("avg_processing_time", { precision: 10, scale: 2 }).default("0"),
+  successRate: decimal("success_rate", { precision: 5, scale: 2 }).default("0"), // 0-100%
+  deadLetterCount: integer("dead_letter_count").default(0),
+  circuitBreakerTriggered: integer("circuit_breaker_triggered").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Marketplace Retry Config - Marketplace-specific retry configurations
+export const marketplaceRetryConfig = pgTable("marketplace_retry_config", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  marketplace: text("marketplace").notNull().unique(),
+  isEnabled: boolean("is_enabled").default(true),
+  globalMaxRetries: integer("global_max_retries").default(5),
+  rateLimitDetection: jsonb("rate_limit_detection"), // Headers and patterns to detect rate limits
+  customErrorMappings: jsonb("custom_error_mappings"), // Marketplace-specific error categorization
+  retryDelayOverrides: jsonb("retry_delay_overrides"), // Custom delays per failure category
+  circuitBreakerConfig: jsonb("circuit_breaker_config"), // Marketplace-specific circuit breaker settings
+  maintenanceWindows: jsonb("maintenance_windows"), // Known maintenance schedules to avoid
+  adaptiveRetryEnabled: boolean("adaptive_retry_enabled").default(true),
+  adaptiveSuccessThreshold: decimal("adaptive_success_threshold", { precision: 3, scale: 2 }).default("0.8"), // 80% success rate
+  adaptiveAdjustmentFactor: decimal("adaptive_adjustment_factor", { precision: 3, scale: 2 }).default("1.5"), // Adjustment multiplier
+  priority: integer("priority").default(0), // Priority for retry processing
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,
@@ -540,6 +659,103 @@ export const insertMarketplaceMetricsSchema = createInsertSchema(marketplaceMetr
   periodEnd: true,
 });
 
+export const insertJobRetryHistorySchema = createInsertSchema(jobRetryHistory).pick({
+  jobId: true,
+  attemptNumber: true,
+  failureCategory: true,
+  errorType: true,
+  errorMessage: true,
+  errorCode: true,
+  marketplace: true,
+  retryDelay: true,
+  nextRetryAt: true,
+  stackTrace: true,
+  requestData: true,
+  responseData: true,
+  contextData: true,
+  processingDuration: true,
+});
+
+export const insertFailureCategorySchema = createInsertSchema(failureCategories).pick({
+  category: true,
+  description: true,
+  shouldRetry: true,
+  maxRetries: true,
+  baseDelayMs: true,
+  maxDelayMs: true,
+  backoffMultiplier: true,
+  jitterRange: true,
+  requiresUserIntervention: true,
+  circuitBreakerEnabled: true,
+  isActive: true,
+});
+
+export const insertCircuitBreakerStatusSchema = createInsertSchema(circuitBreakerStatus).pick({
+  marketplace: true,
+  status: true,
+  failureCount: true,
+  successCount: true,
+  lastFailureAt: true,
+  lastSuccessAt: true,
+  openedAt: true,
+  nextRetryAt: true,
+  failureThreshold: true,
+  recoveryThreshold: true,
+  timeoutMs: true,
+  halfOpenMaxRequests: true,
+  currentHalfOpenRequests: true,
+  metadata: true,
+});
+
+export const insertDeadLetterQueueSchema = createInsertSchema(deadLetterQueue).pick({
+  originalJobId: true,
+  jobType: true,
+  jobData: true,
+  finalFailureCategory: true,
+  totalAttempts: true,
+  firstFailureAt: true,
+  lastFailureAt: true,
+  failureHistory: true,
+  requiresManualReview: true,
+  resolutionStatus: true,
+  resolutionNotes: true,
+  resolvedAt: true,
+  resolvedBy: true,
+});
+
+export const insertRetryMetricsSchema = createInsertSchema(retryMetrics).pick({
+  marketplace: true,
+  jobType: true,
+  failureCategory: true,
+  timeWindow: true,
+  totalAttempts: true,
+  successfulRetries: true,
+  failedRetries: true,
+  avgRetryDelay: true,
+  maxRetryDelay: true,
+  minRetryDelay: true,
+  avgProcessingTime: true,
+  successRate: true,
+  deadLetterCount: true,
+  circuitBreakerTriggered: true,
+});
+
+export const insertMarketplaceRetryConfigSchema = createInsertSchema(marketplaceRetryConfig).pick({
+  marketplace: true,
+  isEnabled: true,
+  globalMaxRetries: true,
+  rateLimitDetection: true,
+  customErrorMappings: true,
+  retryDelayOverrides: true,
+  circuitBreakerConfig: true,
+  maintenanceWindows: true,
+  adaptiveRetryEnabled: true,
+  adaptiveSuccessThreshold: true,
+  adaptiveAdjustmentFactor: true,
+  priority: true,
+  isActive: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -574,6 +790,18 @@ export type InventoryMetrics = typeof inventoryMetrics.$inferSelect;
 export type InsertInventoryMetrics = z.infer<typeof insertInventoryMetricsSchema>;
 export type MarketplaceMetrics = typeof marketplaceMetrics.$inferSelect;
 export type InsertMarketplaceMetrics = z.infer<typeof insertMarketplaceMetricsSchema>;
+export type JobRetryHistory = typeof jobRetryHistory.$inferSelect;
+export type InsertJobRetryHistory = z.infer<typeof insertJobRetryHistorySchema>;
+export type FailureCategory = typeof failureCategories.$inferSelect;
+export type InsertFailureCategory = z.infer<typeof insertFailureCategorySchema>;
+export type CircuitBreakerStatus = typeof circuitBreakerStatus.$inferSelect;
+export type InsertCircuitBreakerStatus = z.infer<typeof insertCircuitBreakerStatusSchema>;
+export type DeadLetterQueue = typeof deadLetterQueue.$inferSelect;
+export type InsertDeadLetterQueue = z.infer<typeof insertDeadLetterQueueSchema>;
+export type RetryMetrics = typeof retryMetrics.$inferSelect;
+export type InsertRetryMetrics = z.infer<typeof insertRetryMetricsSchema>;
+export type MarketplaceRetryConfig = typeof marketplaceRetryConfig.$inferSelect;
+export type InsertMarketplaceRetryConfig = z.infer<typeof insertMarketplaceRetryConfigSchema>;
 export type MarketplacePostingRules = typeof marketplacePostingRules.$inferSelect;
 export type InsertMarketplacePostingRules = z.infer<typeof insertMarketplacePostingRulesSchema>;
 export type PostingSuccessAnalytics = typeof postingSuccessAnalytics.$inferSelect;

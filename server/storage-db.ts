@@ -15,7 +15,17 @@ import {
   analyticsEvents, type AnalyticsEvent, type InsertAnalyticsEvent,
   salesMetrics, type SalesMetrics, type InsertSalesMetrics,
   inventoryMetrics, type InventoryMetrics, type InsertInventoryMetrics,
-  marketplaceMetrics, type MarketplaceMetrics, type InsertMarketplaceMetrics
+  marketplaceMetrics, type MarketplaceMetrics, type InsertMarketplaceMetrics,
+  marketplacePostingRules, type MarketplacePostingRules, type InsertMarketplacePostingRules,
+  postingSuccessAnalytics, type PostingSuccessAnalytics, type InsertPostingSuccessAnalytics,
+  rateLimitTracker, type RateLimitTracker, type InsertRateLimitTracker,
+  queueDistribution, type QueueDistribution, type InsertQueueDistribution,
+  jobRetryHistory, type JobRetryHistory, type InsertJobRetryHistory,
+  circuitBreakerStatus, type CircuitBreakerStatus, type InsertCircuitBreakerStatus,
+  deadLetterQueue, type DeadLetterQueue, type InsertDeadLetterQueue,
+  retryMetrics, type RetryMetrics, type InsertRetryMetrics,
+  failureCategories, type FailureCategory, type InsertFailureCategory,
+  marketplaceRetryConfig, type MarketplaceRetryConfig, type InsertMarketplaceRetryConfig
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, gte, lte, isNull, sql } from "drizzle-orm";
@@ -753,5 +763,418 @@ export class DatabaseStorage implements IStorage {
       .returning();
     if (!metrics) throw new Error("Marketplace metrics not found");
     return metrics;
+  }
+
+  // Marketplace Posting Rules methods
+  async getMarketplacePostingRules(marketplace?: string): Promise<MarketplacePostingRules[]> {
+    if (marketplace) {
+      return await db.select().from(marketplacePostingRules).where(eq(marketplacePostingRules.marketplace, marketplace));
+    }
+    return await db.select().from(marketplacePostingRules);
+  }
+
+  async getMarketplacePostingRule(marketplace: string): Promise<MarketplacePostingRules | undefined> {
+    const [rule] = await db.select().from(marketplacePostingRules).where(eq(marketplacePostingRules.marketplace, marketplace));
+    return rule || undefined;
+  }
+
+  async createMarketplacePostingRules(rules: InsertMarketplacePostingRules): Promise<MarketplacePostingRules> {
+    const [newRules] = await db
+      .insert(marketplacePostingRules)
+      .values({
+        ...rules,
+        id: randomUUID(),
+        createdAt: new Date(),
+      })
+      .returning();
+    return newRules;
+  }
+
+  async updateMarketplacePostingRules(marketplace: string, updates: Partial<MarketplacePostingRules>): Promise<MarketplacePostingRules> {
+    const [rules] = await db
+      .update(marketplacePostingRules)
+      .set({ ...updates, lastUpdated: new Date() })
+      .where(eq(marketplacePostingRules.marketplace, marketplace))
+      .returning();
+    if (!rules) throw new Error("Marketplace posting rules not found");
+    return rules;
+  }
+
+  // Posting Success Analytics methods
+  async createPostingSuccessAnalytics(userId: string, analytics: InsertPostingSuccessAnalytics): Promise<PostingSuccessAnalytics> {
+    const [newAnalytics] = await db
+      .insert(postingSuccessAnalytics)
+      .values({
+        ...analytics,
+        id: randomUUID(),
+        userId,
+        updatedAt: new Date(),
+        createdAt: new Date(),
+      })
+      .returning();
+    return newAnalytics;
+  }
+
+  async getPostingSuccessAnalytics(userId: string, filters?: { marketplace?: string; startDate?: Date; endDate?: Date; category?: string }): Promise<PostingSuccessAnalytics[]> {
+    let conditions = [eq(postingSuccessAnalytics.userId, userId)];
+    
+    if (filters?.marketplace) {
+      conditions.push(eq(postingSuccessAnalytics.marketplace, filters.marketplace));
+    }
+    if (filters?.category) {
+      conditions.push(eq(postingSuccessAnalytics.category, filters.category));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(postingSuccessAnalytics.postedAt, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(postingSuccessAnalytics.postedAt, filters.endDate));
+    }
+    
+    return await db.select().from(postingSuccessAnalytics).where(and(...conditions)).orderBy(desc(postingSuccessAnalytics.postedAt));
+  }
+
+  async updatePostingSuccessAnalytics(id: string, updates: Partial<PostingSuccessAnalytics>): Promise<PostingSuccessAnalytics> {
+    const [analytics] = await db
+      .update(postingSuccessAnalytics)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(postingSuccessAnalytics.id, id))
+      .returning();
+    if (!analytics) throw new Error("Posting success analytics not found");
+    return analytics;
+  }
+
+  // Rate Limit Tracker methods
+  async getRateLimitTracker(marketplace: string, windowType: string): Promise<RateLimitTracker | undefined> {
+    const [tracker] = await db.select().from(rateLimitTracker)
+      .where(and(eq(rateLimitTracker.marketplace, marketplace), eq(rateLimitTracker.windowType, windowType)));
+    return tracker || undefined;
+  }
+
+  async createRateLimitTracker(tracker: InsertRateLimitTracker): Promise<RateLimitTracker> {
+    const [newTracker] = await db
+      .insert(rateLimitTracker)
+      .values({
+        ...tracker,
+        id: randomUUID(),
+        createdAt: new Date(),
+      })
+      .returning();
+    return newTracker;
+  }
+
+  async updateRateLimitTracker(id: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker> {
+    const [tracker] = await db
+      .update(rateLimitTracker)
+      .set(updates)
+      .where(eq(rateLimitTracker.id, id))
+      .returning();
+    if (!tracker) throw new Error("Rate limit tracker not found");
+    return tracker;
+  }
+
+  async getCurrentRateLimits(marketplaces: string[]): Promise<Record<string, RateLimitTracker | null>> {
+    const result: Record<string, RateLimitTracker | null> = {};
+    
+    for (const marketplace of marketplaces) {
+      const [tracker] = await db.select().from(rateLimitTracker)
+        .where(and(
+          eq(rateLimitTracker.marketplace, marketplace),
+          eq(rateLimitTracker.windowType, 'hourly')
+        ))
+        .orderBy(desc(rateLimitTracker.timeWindow))
+        .limit(1);
+      result[marketplace] = tracker || null;
+    }
+    
+    return result;
+  }
+
+  // Queue Distribution methods
+  async getQueueDistribution(timeSlot: Date, marketplace?: string): Promise<QueueDistribution[]> {
+    let conditions = [eq(queueDistribution.timeSlot, timeSlot)];
+    
+    if (marketplace) {
+      conditions.push(eq(queueDistribution.marketplace, marketplace));
+    }
+    
+    return await db.select().from(queueDistribution).where(and(...conditions));
+  }
+
+  async createQueueDistribution(distribution: InsertQueueDistribution): Promise<QueueDistribution> {
+    const [newDistribution] = await db
+      .insert(queueDistribution)
+      .values({
+        ...distribution,
+        id: randomUUID(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newDistribution;
+  }
+
+  async updateQueueDistribution(id: string, updates: Partial<QueueDistribution>): Promise<QueueDistribution> {
+    const [distribution] = await db
+      .update(queueDistribution)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(queueDistribution.id, id))
+      .returning();
+    if (!distribution) throw new Error("Queue distribution not found");
+    return distribution;
+  }
+
+  async getAvailableTimeSlots(marketplace: string, startTime: Date, endTime: Date): Promise<QueueDistribution[]> {
+    return await db.select().from(queueDistribution)
+      .where(and(
+        eq(queueDistribution.marketplace, marketplace),
+        eq(queueDistribution.isAvailable, true),
+        gte(queueDistribution.timeSlot, startTime),
+        lte(queueDistribution.timeSlot, endTime),
+        sql`${queueDistribution.scheduledJobs} < ${queueDistribution.maxCapacity}`
+      ))
+      .orderBy(queueDistribution.timeSlot);
+  }
+
+  // Job Retry History methods
+  async createJobRetryHistory(history: InsertJobRetryHistory): Promise<JobRetryHistory> {
+    const [newHistory] = await db
+      .insert(jobRetryHistory)
+      .values({
+        ...history,
+        id: randomUUID(),
+        timestamp: new Date(),
+      })
+      .returning();
+    return newHistory;
+  }
+
+  async getJobRetryHistory(jobId: string): Promise<JobRetryHistory[]> {
+    return await db.select().from(jobRetryHistory)
+      .where(eq(jobRetryHistory.jobId, jobId))
+      .orderBy(jobRetryHistory.attemptNumber);
+  }
+
+  // Circuit Breaker methods
+  async getCircuitBreakerStatus(marketplace: string): Promise<CircuitBreakerStatus | undefined> {
+    const [status] = await db.select().from(circuitBreakerStatus)
+      .where(eq(circuitBreakerStatus.marketplace, marketplace));
+    
+    if (status) {
+      return status;
+    }
+    
+    // Create default circuit breaker status if none exists
+    const defaultStatus = await db
+      .insert(circuitBreakerStatus)
+      .values({
+        id: randomUUID(),
+        marketplace,
+        status: "closed",
+        failureCount: 0,
+        successCount: 0,
+        lastFailureAt: null,
+        lastSuccessAt: null,
+        openedAt: null,
+        nextRetryAt: null,
+        failureThreshold: 5,
+        recoveryThreshold: 3,
+        timeoutMs: 60000,
+        halfOpenMaxRequests: 3,
+        currentHalfOpenRequests: 0,
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return defaultStatus[0];
+  }
+
+  async updateCircuitBreaker(marketplace: string, updates: Partial<CircuitBreakerStatus>): Promise<CircuitBreakerStatus> {
+    const [status] = await db
+      .update(circuitBreakerStatus)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(circuitBreakerStatus.marketplace, marketplace))
+      .returning();
+    if (!status) throw new Error("Circuit breaker status not found");
+    return status;
+  }
+
+  async getAllCircuitBreakerStatuses(): Promise<CircuitBreakerStatus[]> {
+    return await db.select().from(circuitBreakerStatus);
+  }
+
+  async createCircuitBreakerStatus(status: InsertCircuitBreakerStatus): Promise<CircuitBreakerStatus> {
+    const [newStatus] = await db
+      .insert(circuitBreakerStatus)
+      .values({
+        ...status,
+        id: randomUUID(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newStatus;
+  }
+
+  // Dead Letter Queue methods
+  async getDeadLetterQueueEntries(userId?: string, filters?: { resolutionStatus?: string; requiresManualReview?: boolean }): Promise<DeadLetterQueue[]> {
+    let conditions = [];
+    
+    if (userId) {
+      conditions.push(eq(deadLetterQueue.userId, userId));
+    }
+    if (filters?.resolutionStatus) {
+      conditions.push(eq(deadLetterQueue.resolutionStatus, filters.resolutionStatus));
+    }
+    if (filters?.requiresManualReview !== undefined) {
+      conditions.push(eq(deadLetterQueue.requiresManualReview, filters.requiresManualReview));
+    }
+    
+    return await db.select().from(deadLetterQueue)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(deadLetterQueue.lastFailureAt));
+  }
+
+  async createDeadLetterQueue(entry: InsertDeadLetterQueue): Promise<DeadLetterQueue> {
+    const [newEntry] = await db
+      .insert(deadLetterQueue)
+      .values({
+        ...entry,
+        id: randomUUID(),
+        createdAt: new Date(),
+      })
+      .returning();
+    return newEntry;
+  }
+
+  async updateDeadLetterQueueEntry(id: string, updates: Partial<DeadLetterQueue>): Promise<DeadLetterQueue> {
+    const [entry] = await db
+      .update(deadLetterQueue)
+      .set(updates)
+      .where(eq(deadLetterQueue.id, id))
+      .returning();
+    if (!entry) throw new Error("Dead letter queue entry not found");
+    return entry;
+  }
+
+  async getDeadLetterQueueStats(userId?: string): Promise<{ total: number; pending: number; resolved: number; requiresReview: number }> {
+    let conditions = [];
+    if (userId) {
+      conditions.push(eq(deadLetterQueue.userId, userId));
+    }
+    
+    const entries = await db.select().from(deadLetterQueue)
+      .where(conditions.length > 0 ? and(...conditions) : undefined);
+    
+    return {
+      total: entries.length,
+      pending: entries.filter(e => e.resolutionStatus === 'pending').length,
+      resolved: entries.filter(e => e.resolutionStatus === 'resolved').length,
+      requiresReview: entries.filter(e => e.requiresManualReview).length,
+    };
+  }
+
+  async cleanupOldEntries(olderThan: Date): Promise<number> {
+    const result = await db.delete(deadLetterQueue)
+      .where(and(
+        lte(deadLetterQueue.createdAt, olderThan),
+        eq(deadLetterQueue.resolutionStatus, 'resolved')
+      ));
+    return result.rowCount || 0;
+  }
+
+  // Retry Metrics methods
+  async createRetryMetrics(metrics: InsertRetryMetrics): Promise<RetryMetrics> {
+    const [newMetrics] = await db
+      .insert(retryMetrics)
+      .values({
+        ...metrics,
+        id: randomUUID(),
+        createdAt: new Date(),
+      })
+      .returning();
+    return newMetrics;
+  }
+
+  async getRetryMetrics(filters?: { marketplace?: string; jobType?: string; timeWindow?: Date }): Promise<RetryMetrics[]> {
+    let conditions = [];
+    
+    if (filters?.marketplace) {
+      conditions.push(eq(retryMetrics.marketplace, filters.marketplace));
+    }
+    if (filters?.jobType) {
+      conditions.push(eq(retryMetrics.jobType, filters.jobType));
+    }
+    if (filters?.timeWindow) {
+      conditions.push(eq(retryMetrics.timeWindow, filters.timeWindow));
+    }
+    
+    return await db.select().from(retryMetrics)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(retryMetrics.timeWindow));
+  }
+
+  // Failure Category methods
+  async getFailureCategories(): Promise<FailureCategory[]> {
+    return await db.select().from(failureCategories).where(eq(failureCategories.isActive, true));
+  }
+
+  async getFailureCategory(category: string): Promise<FailureCategory | undefined> {
+    const [cat] = await db.select().from(failureCategories).where(eq(failureCategories.category, category));
+    return cat || undefined;
+  }
+
+  async createFailureCategory(category: InsertFailureCategory): Promise<FailureCategory> {
+    const [newCategory] = await db
+      .insert(failureCategories)
+      .values({
+        ...category,
+        id: randomUUID(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newCategory;
+  }
+
+  async updateFailureCategory(id: string, updates: Partial<FailureCategory>): Promise<FailureCategory> {
+    const [category] = await db
+      .update(failureCategories)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(failureCategories.id, id))
+      .returning();
+    if (!category) throw new Error("Failure category not found");
+    return category;
+  }
+
+  // Marketplace Retry Config methods
+  async getMarketplaceRetryConfig(marketplace: string): Promise<MarketplaceRetryConfig | undefined> {
+    const [config] = await db.select().from(marketplaceRetryConfig)
+      .where(eq(marketplaceRetryConfig.marketplace, marketplace));
+    return config || undefined;
+  }
+
+  async createMarketplaceRetryConfig(config: InsertMarketplaceRetryConfig): Promise<MarketplaceRetryConfig> {
+    const [newConfig] = await db
+      .insert(marketplaceRetryConfig)
+      .values({
+        ...config,
+        id: randomUUID(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newConfig;
+  }
+
+  async updateMarketplaceRetryConfig(marketplace: string, updates: Partial<MarketplaceRetryConfig>): Promise<MarketplaceRetryConfig> {
+    const [config] = await db
+      .update(marketplaceRetryConfig)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(marketplaceRetryConfig.marketplace, marketplace))
+      .returning();
+    if (!config) throw new Error("Marketplace retry config not found");
+    return config;
   }
 }
