@@ -2,9 +2,9 @@
 
 ## Overview
 
-CrossList Pro is a production-ready MVP that enables sellers to compose product listings once and automatically post them to multiple marketplaces. The platform combines AI-powered product recognition, voice-to-listing technology, and automated background posting to streamline the reselling process across platforms like eBay, Poshmark, Mercari, Facebook Marketplace, Etsy, Depop, Grailed, and Vinted.
+Crosslist Pro is a production-ready MVP that enables sellers to compose product listings once and automatically post them to multiple marketplaces. The platform combines AI-powered product recognition, voice-to-listing technology, automated background posting, and industry-leading analytics to streamline the reselling process across platforms like eBay, Poshmark, Mercari, Facebook Marketplace, Etsy, Depop, Grailed, and Vinted.
 
-The application is designed as a comprehensive crosslisting solution that addresses the core pain points of multi-platform sellers: time-consuming manual listing creation, inventory management across platforms, and the complexity of optimizing listings for different marketplace requirements.
+The application is designed as a comprehensive crosslisting solution that addresses the core pain points of multi-platform sellers: time-consuming manual listing creation, inventory management across platforms, the complexity of optimizing listings for different marketplace requirements, and the need for deep business insights to maximize profitability.
 
 ## User Preferences
 
@@ -35,6 +35,7 @@ Preferred communication style: Simple, everyday language.
 - **Listing Posts**: Track posting status across marketplaces with external IDs
 - **Jobs**: Background job tracking with progress updates and retry logic
 - **Audit Logs**: Activity tracking for user actions and system events
+- **Analytics Tables**: Comprehensive tracking including sales metrics, inventory analytics, marketplace performance, predictive forecasts, and competition analysis
 
 ### AI Integration Architecture
 - **Product Analysis**: GPT-5 integration for analyzing product images and generating optimized listings
@@ -53,6 +54,16 @@ Preferred communication style: Simple, everyday language.
 - **API Stubs**: Poshmark and Mercari with placeholder implementations
 - **Fallback System**: Playwright automation behind feature flags for platforms without APIs
 - **Connection Management**: Token refresh and health checking for all integrations
+
+### Analytics System Architecture
+- **Real-time Performance Tracking**: Sales velocity, conversion rates, and revenue metrics
+- **Predictive Analytics**: 30-day forecasting using moving averages and trend analysis
+- **Competition Analysis**: Market positioning and pricing optimization
+- **Smart Insights**: AI-powered pattern recognition and recommendations
+- **Comprehensive Profit Calculator**: True profit with all fees and costs included
+- **Cross-platform Comparison**: Performance scoring and optimization across marketplaces
+- **Inventory Analytics**: Aging reports, turnover rates, and dead stock identification
+- **Export Capabilities**: CSV and JSON export for all analytics data
 
 ## External Dependencies
 
