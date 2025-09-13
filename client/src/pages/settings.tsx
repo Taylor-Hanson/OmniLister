@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { RotateCw, GraduationCap } from "lucide-react";
 
 const profileSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
@@ -84,6 +85,30 @@ export default function Settings() {
     onError: (error: any) => {
       toast({
         title: "Deletion failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const resetOnboardingMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("/api/onboarding/reset", { method: "POST" }),
+    onSuccess: () => {
+      toast({
+        title: "Tutorial Reset",
+        description: "The onboarding tutorial will start when you refresh the page.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/progress"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      // Refresh the page to start the tutorial
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Reset failed",
         description: error.message,
         variant: "destructive",
       });
@@ -206,6 +231,36 @@ export default function Settings() {
                 <div className="text-center">
                   <div className="text-2xl font-bold text-foreground">0</div>
                   <p className="text-sm text-muted-foreground">Connected Marketplaces</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Tutorial & Help</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <GraduationCap className="h-5 w-5 text-primary" />
+                      <Label>Onboarding Tutorial</Label>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Learn how to use CrossList Pro with our interactive tutorial
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => resetOnboardingMutation.mutate()}
+                    disabled={resetOnboardingMutation.isPending}
+                    data-testid="button-restart-tutorial"
+                  >
+                    <RotateCw className="h-4 w-4 mr-2" />
+                    {resetOnboardingMutation.isPending ? "Restarting..." : "Restart Tutorial"}
+                  </Button>
                 </div>
               </div>
             </CardContent>

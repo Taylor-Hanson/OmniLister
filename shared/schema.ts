@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   subscriptionStatus: text("subscription_status").default("inactive"),
+  onboardingCompleted: boolean("onboarding_completed").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -182,6 +183,18 @@ export const autoDelistHistory = pgTable("auto_delist_history", {
   delistedAt: timestamp("delisted_at").defaultNow(),
 });
 
+// Onboarding Progress table
+export const onboardingProgress = pgTable("onboarding_progress", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  currentStep: integer("current_step").notNull().default(0),
+  completedSteps: jsonb("completed_steps").notNull().default([]), // Array of completed step indices
+  skipped: boolean("skipped").default(false),
+  completedAt: timestamp("completed_at"),
+  startedAt: timestamp("started_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,
@@ -278,6 +291,12 @@ export const insertAutoDelistHistorySchema = createInsertSchema(autoDelistHistor
   reason: true,
 });
 
+export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgress).pick({
+  currentStep: true,
+  completedSteps: true,
+  skipped: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -302,3 +321,5 @@ export type AutoDelistRule = typeof autoDelistRules.$inferSelect;
 export type InsertAutoDelistRule = z.infer<typeof insertAutoDelistRuleSchema>;
 export type AutoDelistHistory = typeof autoDelistHistory.$inferSelect;
 export type InsertAutoDelistHistory = z.infer<typeof insertAutoDelistHistorySchema>;
+export type OnboardingProgress = typeof onboardingProgress.$inferSelect;
+export type InsertOnboardingProgress = z.infer<typeof insertOnboardingProgressSchema>;

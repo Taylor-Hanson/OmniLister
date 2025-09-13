@@ -117,3 +117,78 @@
     -webkit-line-clamp: 3;
   }
 }
+
+/* Onboarding Styles */
+@layer components {
+  /* Highlight effect for onboarding elements */
+  .onboarding-highlight {
+    position: relative;
+    z-index: 9998 !important;
+    animation: pulse-highlight 2s ease-in-out infinite;
+  }
+
+  /* Spotlight effect for focused elements */
+  .onboarding-spotlight {
+    position: relative;
+    z-index: 9998 !important;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3), 
+                0 0 0 8px rgba(59, 130, 246, 0.1);
+    border-radius: var(--radius);
+    transition: all 0.3s ease;
+  }
+
+  /* Pulse animation for highlighted elements */
+  @keyframes pulse-highlight {
+    0% {
+      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+    }
+  }
+
+  /* Smooth entrance animation */
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Confetti canvas positioning */
+  canvas#confetti-canvas {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    pointer-events: none !important;
+    z-index: 10001 !important;
+  }
+
+  /* Ensure onboarding elements are above other content */
+  .onboarding-overlay {
+    animation: fade-in 0.3s ease-out;
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Progress bar animation */
+  .onboarding-progress {
+    transition: width 0.3s ease-out;
+  }
+}

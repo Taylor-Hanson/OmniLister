@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Layout from "@/components/Layout";
+import OnboardingWizard from "@/components/OnboardingWizard";
 import Login from "@/pages/login";
 import Signup from "@/pages/signup";
 import Dashboard from "@/pages/dashboard";
@@ -42,8 +43,9 @@ function Router() {
   return (
     <>
       {user ? (
-        <Layout>
-          <Switch>
+        <>
+          <Layout>
+            <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/dashboard" component={Dashboard} />
             <Route path="/create-listing" component={CreateListing} />
@@ -55,8 +57,10 @@ function Router() {
             <Route path="/settings" component={Settings} />
             <Route path="/subscribe" component={Subscribe} />
             <Route component={NotFound} />
-          </Switch>
-        </Layout>
+            </Switch>
+          </Layout>
+          <OnboardingWizard />
+        </>
       ) : (
         <Switch>
           <Route path="/" component={Login} />

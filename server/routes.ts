@@ -8,6 +8,7 @@ import { marketplaceService } from "./services/marketplaceService";
 import { queueService } from "./services/queueService";
 import { syncService } from "./services/syncService";
 import { autoDelistService } from "./services/autoDelistService";
+import { onboardingService, ONBOARDING_STEPS } from "./services/onboardingService";
 import { requireAuth, optionalAuth, requirePlan } from "./middleware/auth";
 import { insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema, insertSyncSettingsSchema, insertSyncRuleSchema, insertAutoDelistRuleSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
@@ -66,6 +67,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const stats = await storage.getUserStats(req.user!.id);
       res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Onboarding routes
+  app.get("/api/onboarding/progress", requireAuth, async (req, res) => {
+    try {
+      const progress = await onboardingService.getProgress(req.user!.id);
+      const progressPercentage = progress ? 
+        onboardingService.calculateProgress(progress.completedSteps as number[] || []) : 0;
+      
+      res.json({
+        progress,
+        steps: ONBOARDING_STEPS,
+        progressPercentage,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/progress", requireAuth, async (req, res) => {
+    try {
+      const { currentStep, completedStep } = req.body;
+      const progress = await onboardingService.updateProgress(
+        req.user!.id,
+        currentStep,
+        completedStep
+      );
+      
+      const progressPercentage = progress ? 
+        onboardingService.calculateProgress(progress.completedSteps as number[] || []) : 0;
+      
+      res.json({ progress, progressPercentage });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/complete", requireAuth, async (req, res) => {
+    try {
+      const progress = await onboardingService.completeOnboarding(req.user!.id);
+      res.json({ progress, completed: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/skip", requireAuth, async (req, res) => {
+    try {
+      const progress = await onboardingService.skipOnboarding(req.user!.id);
+      res.json({ progress, skipped: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/onboarding/reset", requireAuth, async (req, res) => {
+    try {
+      const progress = await onboardingService.resetOnboarding(req.user!.id);
+      res.json({ progress, reset: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
