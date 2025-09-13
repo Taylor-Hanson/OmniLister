@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Check, X, Zap, TrendingUp, Crown, Rocket, Gift, Mail, Info } from "lucide-react";
+import { Check, X, Zap, TrendingUp, Crown, Rocket, Gift, Mail, Info, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PRICING_PLANS = [
@@ -181,8 +181,8 @@ export default function Pricing() {
     if (planId === 'free') {
       selectPlanMutation.mutate(planId);
     } else {
-      setSelectedPlan(planId);
-      setShowContactDialog(true);
+      // Navigate to subscribe page with selected plan for Stripe payment
+      window.location.href = `/subscribe?plan=${planId}`;
     }
   };
 
@@ -208,7 +208,7 @@ export default function Pricing() {
           <Info className="h-4 w-4" />
           <AlertDescription>
             <strong>Limited Time Offer:</strong> Start with our free plan and get 10 listings per month forever! 
-            Paid plans with automatic billing are coming soon. Contact sales for early access to paid plans.
+            Subscribe to any paid plan to unlock more listings and advanced features.
           </AlertDescription>
         </Alert>
 
@@ -293,8 +293,8 @@ export default function Pricing() {
                       onClick={() => handleSelectPlan(plan.id)}
                       data-testid={`button-select-${plan.id}`}
                     >
-                      <Mail className="w-4 h-4 mr-2" />
-                      Contact Sales
+                      <CreditCard className="w-4 h-4 mr-2" />
+                      Subscribe
                     </Button>
                   )
                 ) : (
