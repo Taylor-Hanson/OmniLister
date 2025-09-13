@@ -19,7 +19,13 @@ import {
   type MarketplacePostingRules, type InsertMarketplacePostingRules,
   type PostingSuccessAnalytics, type InsertPostingSuccessAnalytics,
   type RateLimitTracker, type InsertRateLimitTracker,
-  type QueueDistribution, type InsertQueueDistribution
+  type QueueDistribution, type InsertQueueDistribution,
+  type Batch, type InsertBatch,
+  type BatchItem, type InsertBatchItem,
+  type BulkUpload, type InsertBulkUpload,
+  type BatchTemplate, type InsertBatchTemplate,
+  type BatchAnalytics, type InsertBatchAnalytics,
+  type BatchQueue, type InsertBatchQueue
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -302,6 +308,74 @@ export interface IStorage {
     marketplace?: string;
     canReschedule?: boolean;
   }): Promise<Job[]>;
+
+  // Batch methods
+  getBatches(userId: string, filters?: { status?: string; type?: string }): Promise<Batch[]>;
+  getBatch(id: string): Promise<Batch | undefined>;
+  createBatch(userId: string, batch: InsertBatch): Promise<Batch>;
+  updateBatch(id: string, updates: Partial<Batch>): Promise<Batch>;
+  deleteBatch(id: string): Promise<void>;
+  getBatchesByStatus(status: string, userId?: string): Promise<Batch[]>;
+  getBatchProgress(id: string): Promise<{ 
+    totalItems: number; 
+    processedItems: number; 
+    successfulItems: number; 
+    failedItems: number; 
+    progress: number 
+  }>;
+
+  // Batch Item methods
+  getBatchItems(batchId: string, filters?: { status?: string }): Promise<BatchItem[]>;
+  getBatchItem(id: string): Promise<BatchItem | undefined>;
+  createBatchItem(batchItem: InsertBatchItem): Promise<BatchItem>;
+  updateBatchItem(id: string, updates: Partial<BatchItem>): Promise<BatchItem>;
+  deleteBatchItem(id: string): Promise<void>;
+  createBatchItems(batchItems: InsertBatchItem[]): Promise<BatchItem[]>;
+  updateBatchItemsStatus(batchId: string, status: string, filters?: { currentStatus?: string }): Promise<void>;
+
+  // Bulk Upload methods
+  getBulkUploads(userId: string, filters?: { status?: string; uploadType?: string }): Promise<BulkUpload[]>;
+  getBulkUpload(id: string): Promise<BulkUpload | undefined>;
+  createBulkUpload(userId: string, upload: InsertBulkUpload): Promise<BulkUpload>;
+  updateBulkUpload(id: string, updates: Partial<BulkUpload>): Promise<BulkUpload>;
+  deleteBulkUpload(id: string): Promise<void>;
+
+  // Batch Template methods
+  getBatchTemplates(userId: string, filters?: { type?: string; isPublic?: boolean }): Promise<BatchTemplate[]>;
+  getBatchTemplate(id: string): Promise<BatchTemplate | undefined>;
+  createBatchTemplate(userId: string, template: InsertBatchTemplate): Promise<BatchTemplate>;
+  updateBatchTemplate(id: string, updates: Partial<BatchTemplate>): Promise<BatchTemplate>;
+  deleteBatchTemplate(id: string): Promise<void>;
+  getDefaultBatchTemplates(type: string): Promise<BatchTemplate[]>;
+  incrementTemplateUsage(id: string): Promise<void>;
+
+  // Batch Analytics methods
+  getBatchAnalytics(batchId: string, marketplace?: string): Promise<BatchAnalytics[]>;
+  createBatchAnalytics(userId: string, analytics: InsertBatchAnalytics): Promise<BatchAnalytics>;
+  updateBatchAnalytics(id: string, updates: Partial<BatchAnalytics>): Promise<BatchAnalytics>;
+  getBatchPerformanceStats(userId: string, filters?: { 
+    dateStart?: Date; 
+    dateEnd?: Date; 
+    marketplace?: string; 
+    type?: string 
+  }): Promise<Array<{
+    batchId: string;
+    batchName: string;
+    type: string;
+    successRate: number;
+    avgProcessingTime: number;
+    totalItems: number;
+    costEfficiency: number;
+  }>>;
+
+  // Batch Queue methods
+  getBatchQueue(filters?: { priority?: number; status?: string }): Promise<BatchQueue[]>;
+  getBatchQueueEntry(batchId: string): Promise<BatchQueue | undefined>;
+  createBatchQueueEntry(entry: InsertBatchQueue): Promise<BatchQueue>;
+  updateBatchQueueEntry(batchId: string, updates: Partial<BatchQueue>): Promise<BatchQueue>;
+  deleteBatchQueueEntry(batchId: string): Promise<void>;
+  getNextBatchForProcessing(): Promise<BatchQueue | undefined>;
+  updateQueuePositions(): Promise<void>;
 }
 
 export class MemStorage implements IStorage {

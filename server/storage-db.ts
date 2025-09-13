@@ -25,7 +25,13 @@ import {
   deadLetterQueue, type DeadLetterQueue, type InsertDeadLetterQueue,
   retryMetrics, type RetryMetrics, type InsertRetryMetrics,
   failureCategories, type FailureCategory, type InsertFailureCategory,
-  marketplaceRetryConfig, type MarketplaceRetryConfig, type InsertMarketplaceRetryConfig
+  marketplaceRetryConfig, type MarketplaceRetryConfig, type InsertMarketplaceRetryConfig,
+  batches, type Batch, type InsertBatch,
+  batchItems, type BatchItem, type InsertBatchItem,
+  bulkUploads, type BulkUpload, type InsertBulkUpload,
+  batchTemplates, type BatchTemplate, type InsertBatchTemplate,
+  batchAnalytics, type BatchAnalytics, type InsertBatchAnalytics,
+  batchQueue, type BatchQueue, type InsertBatchQueue
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, gte, lte, isNull, sql } from "drizzle-orm";
@@ -1238,5 +1244,401 @@ export class DatabaseStorage implements IStorage {
       .returning();
     if (!config) throw new Error("Marketplace retry config not found");
     return config;
+  }
+
+  // Batch methods
+  async getBatches(userId: string, filters?: { status?: string; type?: string }): Promise<Batch[]> {
+    const conditions: any[] = [eq(batches.userId, userId)];
+    
+    if (filters?.status) {
+      conditions.push(eq(batches.status, filters.status));
+    }
+    if (filters?.type) {
+      conditions.push(eq(batches.type, filters.type));
+    }
+    
+    return await db.select().from(batches)
+      .where(and(...conditions))
+      .orderBy(desc(batches.createdAt));
+  }
+
+  async getBatch(id: string): Promise<Batch | undefined> {
+    const [batch] = await db.select().from(batches).where(eq(batches.id, id));
+    return batch || undefined;
+  }
+
+  async createBatch(userId: string, batch: InsertBatch): Promise<Batch> {
+    const [newBatch] = await db
+      .insert(batches)
+      .values({
+        ...batch,
+        id: randomUUID(),
+        userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newBatch;
+  }
+
+  async updateBatch(id: string, updates: Partial<Batch>): Promise<Batch> {
+    const [batch] = await db
+      .update(batches)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(batches.id, id))
+      .returning();
+    if (!batch) throw new Error("Batch not found");
+    return batch;
+  }
+
+  async deleteBatch(id: string): Promise<void> {
+    await db.delete(batches).where(eq(batches.id, id));
+  }
+
+  async getBatchesByStatus(status: string, userId?: string): Promise<Batch[]> {
+    const conditions: any[] = [eq(batches.status, status)];
+    
+    if (userId) {
+      conditions.push(eq(batches.userId, userId));
+    }
+    
+    return await db.select().from(batches)
+      .where(and(...conditions))
+      .orderBy(desc(batches.createdAt));
+  }
+
+  async getBatchProgress(id: string): Promise<{ 
+    totalItems: number; 
+    processedItems: number; 
+    successfulItems: number; 
+    failedItems: number; 
+    progress: number 
+  }> {
+    const [batch] = await db.select().from(batches).where(eq(batches.id, id));
+    if (!batch) throw new Error("Batch not found");
+    
+    return {
+      totalItems: batch.totalItems || 0,
+      processedItems: batch.processedItems || 0,
+      successfulItems: batch.successfulItems || 0,
+      failedItems: batch.failedItems || 0,
+      progress: batch.progress || 0
+    };
+  }
+
+  // Batch Item methods
+  async getBatchItems(batchId: string, filters?: { status?: string }): Promise<BatchItem[]> {
+    const conditions: any[] = [eq(batchItems.batchId, batchId)];
+    
+    if (filters?.status) {
+      conditions.push(eq(batchItems.status, filters.status));
+    }
+    
+    return await db.select().from(batchItems)
+      .where(and(...conditions))
+      .orderBy(batchItems.itemIndex);
+  }
+
+  async getBatchItem(id: string): Promise<BatchItem | undefined> {
+    const [item] = await db.select().from(batchItems).where(eq(batchItems.id, id));
+    return item || undefined;
+  }
+
+  async createBatchItem(batchItem: InsertBatchItem): Promise<BatchItem> {
+    const [newItem] = await db
+      .insert(batchItems)
+      .values({
+        ...batchItem,
+        id: randomUUID(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newItem;
+  }
+
+  async updateBatchItem(id: string, updates: Partial<BatchItem>): Promise<BatchItem> {
+    const [item] = await db
+      .update(batchItems)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(batchItems.id, id))
+      .returning();
+    if (!item) throw new Error("Batch item not found");
+    return item;
+  }
+
+  async deleteBatchItem(id: string): Promise<void> {
+    await db.delete(batchItems).where(eq(batchItems.id, id));
+  }
+
+  async createBatchItems(batchItemList: InsertBatchItem[]): Promise<BatchItem[]> {
+    if (batchItemList.length === 0) return [];
+    
+    const itemsToInsert = batchItemList.map(item => ({
+      ...item,
+      id: randomUUID(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }));
+    
+    return await db.insert(batchItems).values(itemsToInsert).returning();
+  }
+
+  async updateBatchItemsStatus(batchId: string, status: string, filters?: { currentStatus?: string }): Promise<void> {
+    const conditions: any[] = [eq(batchItems.batchId, batchId)];
+    
+    if (filters?.currentStatus) {
+      conditions.push(eq(batchItems.status, filters.currentStatus));
+    }
+    
+    await db.update(batchItems)
+      .set({ status, updatedAt: new Date() })
+      .where(and(...conditions));
+  }
+
+  // Bulk Upload methods
+  async getBulkUploads(userId: string, filters?: { status?: string; uploadType?: string }): Promise<BulkUpload[]> {
+    const conditions: any[] = [eq(bulkUploads.userId, userId)];
+    
+    if (filters?.status) {
+      conditions.push(eq(bulkUploads.status, filters.status));
+    }
+    if (filters?.uploadType) {
+      conditions.push(eq(bulkUploads.uploadType, filters.uploadType));
+    }
+    
+    return await db.select().from(bulkUploads)
+      .where(and(...conditions))
+      .orderBy(desc(bulkUploads.createdAt));
+  }
+
+  async getBulkUpload(id: string): Promise<BulkUpload | undefined> {
+    const [upload] = await db.select().from(bulkUploads).where(eq(bulkUploads.id, id));
+    return upload || undefined;
+  }
+
+  async createBulkUpload(userId: string, upload: InsertBulkUpload): Promise<BulkUpload> {
+    const [newUpload] = await db
+      .insert(bulkUploads)
+      .values({
+        ...upload,
+        id: randomUUID(),
+        userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newUpload;
+  }
+
+  async updateBulkUpload(id: string, updates: Partial<BulkUpload>): Promise<BulkUpload> {
+    const [upload] = await db
+      .update(bulkUploads)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(bulkUploads.id, id))
+      .returning();
+    if (!upload) throw new Error("Bulk upload not found");
+    return upload;
+  }
+
+  async deleteBulkUpload(id: string): Promise<void> {
+    await db.delete(bulkUploads).where(eq(bulkUploads.id, id));
+  }
+
+  // Batch Template methods
+  async getBatchTemplates(userId: string, filters?: { type?: string; isPublic?: boolean }): Promise<BatchTemplate[]> {
+    const conditions: any[] = [
+      or(eq(batchTemplates.userId, userId), eq(batchTemplates.isPublic, true))
+    ];
+    
+    if (filters?.type) {
+      conditions.push(eq(batchTemplates.type, filters.type));
+    }
+    if (filters?.isPublic !== undefined) {
+      conditions.push(eq(batchTemplates.isPublic, filters.isPublic));
+    }
+    
+    return await db.select().from(batchTemplates)
+      .where(and(...conditions))
+      .orderBy(desc(batchTemplates.lastUsedAt));
+  }
+
+  async getBatchTemplate(id: string): Promise<BatchTemplate | undefined> {
+    const [template] = await db.select().from(batchTemplates).where(eq(batchTemplates.id, id));
+    return template || undefined;
+  }
+
+  async createBatchTemplate(userId: string, template: InsertBatchTemplate): Promise<BatchTemplate> {
+    const [newTemplate] = await db
+      .insert(batchTemplates)
+      .values({
+        ...template,
+        id: randomUUID(),
+        userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newTemplate;
+  }
+
+  async updateBatchTemplate(id: string, updates: Partial<BatchTemplate>): Promise<BatchTemplate> {
+    const [template] = await db
+      .update(batchTemplates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(batchTemplates.id, id))
+      .returning();
+    if (!template) throw new Error("Batch template not found");
+    return template;
+  }
+
+  async deleteBatchTemplate(id: string): Promise<void> {
+    await db.delete(batchTemplates).where(eq(batchTemplates.id, id));
+  }
+
+  async getDefaultBatchTemplates(type: string): Promise<BatchTemplate[]> {
+    return await db.select().from(batchTemplates)
+      .where(and(eq(batchTemplates.type, type), eq(batchTemplates.isDefault, true)));
+  }
+
+  async incrementTemplateUsage(id: string): Promise<void> {
+    await db.update(batchTemplates)
+      .set({ 
+        usageCount: sql`${batchTemplates.usageCount} + 1`,
+        lastUsedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(batchTemplates.id, id));
+  }
+
+  // Batch Analytics methods
+  async getBatchAnalytics(batchId: string, marketplace?: string): Promise<BatchAnalytics[]> {
+    const conditions: any[] = [eq(batchAnalytics.batchId, batchId)];
+    
+    if (marketplace) {
+      conditions.push(eq(batchAnalytics.marketplace, marketplace));
+    }
+    
+    return await db.select().from(batchAnalytics)
+      .where(and(...conditions))
+      .orderBy(desc(batchAnalytics.createdAt));
+  }
+
+  async createBatchAnalytics(userId: string, analytics: InsertBatchAnalytics): Promise<BatchAnalytics> {
+    const [newAnalytics] = await db
+      .insert(batchAnalytics)
+      .values({
+        ...analytics,
+        id: randomUUID(),
+        userId,
+        createdAt: new Date(),
+      })
+      .returning();
+    return newAnalytics;
+  }
+
+  async updateBatchAnalytics(id: string, updates: Partial<BatchAnalytics>): Promise<BatchAnalytics> {
+    const [analytics] = await db
+      .update(batchAnalytics)
+      .set(updates)
+      .where(eq(batchAnalytics.id, id))
+      .returning();
+    if (!analytics) throw new Error("Batch analytics not found");
+    return analytics;
+  }
+
+  async getBatchPerformanceStats(userId: string, filters?: { 
+    dateStart?: Date; 
+    dateEnd?: Date; 
+    marketplace?: string; 
+    type?: string 
+  }): Promise<Array<{ 
+    batchId: string; 
+    batchName: string; 
+    type: string; 
+    successRate: number; 
+    avgProcessingTime: number; 
+    totalItems: number; 
+    costEfficiency: number; 
+  }>> {
+    const conditions: any[] = [eq(batches.userId, userId)];
+    
+    if (filters?.dateStart) {
+      conditions.push(gte(batches.createdAt, filters.dateStart));
+    }
+    if (filters?.dateEnd) {
+      conditions.push(lte(batches.createdAt, filters.dateEnd));
+    }
+    if (filters?.type) {
+      conditions.push(eq(batches.type, filters.type));
+    }
+    
+    return await db.select({
+      batchId: batches.id,
+      batchName: batches.name,
+      type: batches.type,
+      successRate: sql<number>`CASE WHEN ${batches.totalItems} > 0 THEN (${batches.successfulItems}::float / ${batches.totalItems}::float) * 100 ELSE 0 END`,
+      avgProcessingTime: sql<number>`EXTRACT(EPOCH FROM (${batches.completedAt} - ${batches.startedAt}))`,
+      totalItems: batches.totalItems,
+      costEfficiency: sql<number>`CASE WHEN ${batches.successfulItems} > 0 THEN ${batches.totalItems}::float / ${batches.successfulItems}::float ELSE 0 END`
+    })
+    .from(batches)
+    .where(and(...conditions))
+    .orderBy(desc(batches.createdAt));
+  }
+
+  // Batch Queue methods
+  async getBatchQueue(filters?: { priority?: number; status?: string }): Promise<BatchQueue[]> {
+    let query = db.select().from(batchQueue);
+    const conditions: any[] = [];
+    
+    if (filters?.priority !== undefined) {
+      conditions.push(eq(batchQueue.priority, filters.priority));
+    }
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+    
+    return await query.orderBy(desc(batchQueue.priority), batchQueue.queuePosition);
+  }
+
+  async getBatchQueueEntry(batchId: string): Promise<BatchQueue | undefined> {
+    const [entry] = await db.select().from(batchQueue).where(eq(batchQueue.batchId, batchId));
+    return entry || undefined;
+  }
+
+  async createBatchQueueEntry(entry: InsertBatchQueue): Promise<BatchQueue> {
+    const [newEntry] = await db
+      .insert(batchQueue)
+      .values({
+        ...entry,
+        id: randomUUID(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newEntry;
+  }
+
+  async updateBatchQueueEntry(batchId: string, updates: Partial<BatchQueue>): Promise<BatchQueue> {
+    const [entry] = await db
+      .update(batchQueue)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(batchQueue.batchId, batchId))
+      .returning();
+    if (!entry) throw new Error("Batch queue entry not found");
+    return entry;
+  }
+
+  async deleteBatchQueueEntry(batchId: string): Promise<void> {
+    await db.delete(batchQueue).where(eq(batchQueue.batchId, batchId));
+  }
+
+  async getNextBatchForProcessing(): Promise<BatchQueue | undefined> {
+    const [entry] = await db.select().from(batchQueue)
+      .orderBy(desc(batchQueue.priority), batchQueue.queuePosition)
+      .limit(1);
+    return entry || undefined;
   }
 }
