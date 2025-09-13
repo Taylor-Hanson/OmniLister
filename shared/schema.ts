@@ -18,6 +18,7 @@ export const users = pgTable("users", {
   onboardingCompleted: boolean("onboarding_completed").default(false),
   timezone: text("timezone").default("UTC"), // User's timezone for intelligent scheduling
   preferredPostingWindows: jsonb("preferred_posting_windows"), // User's preferred posting times per marketplace
+  optimizationSettings: jsonb("optimization_settings"), // Auto-optimization preferences
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -465,6 +466,18 @@ export const insertUserSchema = createInsertSchema(users).pick({
   timezone: true,
   preferredPostingWindows: true,
 });
+
+// Optimization settings schema
+export const optimizationSettingsSchema = z.object({
+  autoOptimization: z.boolean().default(false),
+  autoScheduling: z.boolean().default(true),
+  autoPricing: z.boolean().default(false),
+  optimizationThreshold: z.number().min(50).max(90).default(70),
+  learningMode: z.boolean().default(true),
+  notifyOptimizations: z.boolean().default(true),
+});
+
+export type OptimizationSettings = z.infer<typeof optimizationSettingsSchema>;
 
 export const insertMarketplaceConnectionSchema = createInsertSchema(marketplaceConnections).pick({
   marketplace: true,

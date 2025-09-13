@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest } from "@/lib/queryClient";
 
 interface User {
   id: string;
@@ -7,6 +7,10 @@ interface User {
   username: string;
   plan: string;
   subscriptionStatus?: string;
+  listingCredits?: number | null;
+  listingsUsedThisMonth?: number;
+  billingCycleStart?: string | Date;
+  onboardingCompleted?: boolean;
 }
 
 interface AuthContextType {

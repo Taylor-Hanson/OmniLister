@@ -11,6 +11,9 @@ import { storage } from "../storage";
 import { marketplaces } from "@shared/marketplaceConfig";
 import { randomUUID } from "crypto";
 import { rateLimitService, type RateLimitStatus } from "./rateLimitService";
+import { optimizationEngine } from "./optimizationEngine";
+import { patternAnalysisService } from "./patternAnalysisService";
+import { recommendationService } from "./recommendationService";
 
 interface OptimalWindow {
   dayOfWeek: number; // 0 = Sunday, 6 = Saturday
@@ -101,11 +104,13 @@ export class SmartScheduler {
       });
     }
     
-    // Get marketplace posting rules, user analytics, and rate limits
-    const [postingRules, userAnalytics, rateLimitStatuses] = await Promise.all([
+    // Get marketplace posting rules, user analytics, rate limits, and optimization insights
+    const [postingRules, userAnalytics, rateLimitStatuses, optimizationInsights, scheduleRecommendations] = await Promise.all([
       this.getMarketplacePostingRules(requestedMarketplaces),
       this.getUserSuccessAnalytics(user.id, requestedMarketplaces),
       this.getRateLimitStatuses(requestedMarketplaces),
+      optimizationEngine.generateOptimizationInsights(user.id),
+      this.getOptimizedScheduleRecommendations(user.id, listing, requestedMarketplaces),
     ]);
     
     // Emit data collection complete
@@ -137,13 +142,15 @@ export class SmartScheduler {
       });
     }
     
-    // Determine optimal time windows for each marketplace
+    // Determine optimal time windows for each marketplace using optimization insights
     const optimalWindows = await this.calculateOptimalWindows(
       requestedMarketplaces,
       postingRules,
       userAnalytics,
       user.timezone || "UTC",
-      listing.category
+      listing.category,
+      optimizationInsights,
+      scheduleRecommendations
     );
     
     // Emit windows calculated
@@ -296,14 +303,16 @@ export class SmartScheduler {
   }
 
   /**
-   * Calculate optimal posting windows for each marketplace
+   * Calculate optimal posting windows for each marketplace using optimization insights
    */
   private async calculateOptimalWindows(
     marketplaceIds: string[],
     postingRules: Record<string, MarketplacePostingRules | null>,
     userAnalytics: PostingSuccessAnalytics[],
     userTimezone: string,
-    category?: string | null
+    category?: string | null,
+    optimizationInsights?: any,
+    scheduleRecommendations?: any
   ): Promise<Record<string, OptimalWindow[]>> {
     const windows: Record<string, OptimalWindow[]> = {};
 
@@ -311,21 +320,34 @@ export class SmartScheduler {
       const rules = postingRules[marketplace];
       const defaultWindows = this.DEFAULT_POSTING_RULES[marketplace] || [];
       
+      let marketplaceWindows: OptimalWindow[] = [];
+      
       if (rules && rules.optimalWindows) {
         // Use database rules if available
-        windows[marketplace] = rules.optimalWindows as OptimalWindow[];
+        marketplaceWindows = rules.optimalWindows as OptimalWindow[];
       } else {
         // Use default rules and enhance with user analytics
-        windows[marketplace] = this.enhanceWindowsWithUserData(
+        marketplaceWindows = this.enhanceWindowsWithUserData(
           defaultWindows,
           userAnalytics.filter(a => a.marketplace === marketplace),
           category
         );
       }
 
+      // Enhance with optimization insights if available
+      if (optimizationInsights && scheduleRecommendations) {
+        marketplaceWindows = await this.enhanceWindowsWithOptimization(
+          marketplaceWindows,
+          marketplace,
+          category,
+          optimizationInsights,
+          scheduleRecommendations[marketplace]
+        );
+      }
+
       // Apply timezone conversion if needed
       windows[marketplace] = this.convertWindowsToUserTimezone(
-        windows[marketplace],
+        marketplaceWindows,
         userTimezone
       );
     }
@@ -717,6 +739,206 @@ export class SmartScheduler {
     }
     
     return Math.min(100, score);
+  }
+
+  /**
+   * Enhance windows with optimization insights and recommendations
+   */
+  private async enhanceWindowsWithOptimization(
+    baseWindows: OptimalWindow[],
+    marketplace: string,
+    category?: string | null,
+    optimizationInsights?: any,
+    marketplaceRecommendations?: any
+  ): Promise<OptimalWindow[]> {
+    try {
+      // Start with base windows
+      let optimizedWindows = [...baseWindows];
+
+      // Apply optimization insights if available
+      if (optimizationInsights) {
+        // Boost window scores based on optimization insights
+        optimizedWindows = optimizedWindows.map(window => ({
+          ...window,
+          score: this.adjustScoreBasedOnInsights(window, optimizationInsights, marketplace, category)
+        }));
+
+        // Add high-performing windows from insights
+        if (optimizationInsights.bestPerformingTimes) {
+          const newWindows = this.createWindowsFromInsights(
+            optimizationInsights.bestPerformingTimes,
+            marketplace,
+            category
+          );
+          optimizedWindows = [...optimizedWindows, ...newWindows];
+        }
+      }
+
+      // Apply marketplace-specific recommendations
+      if (marketplaceRecommendations && marketplaceRecommendations.scheduleSuggestions) {
+        optimizedWindows = this.applyScheduleRecommendations(
+          optimizedWindows,
+          marketplaceRecommendations.scheduleSuggestions
+        );
+      }
+
+      // Remove duplicates and sort by score
+      optimizedWindows = this.deduplicateAndSortWindows(optimizedWindows);
+
+      // Limit to top performing windows (max 5 per marketplace)
+      return optimizedWindows.slice(0, 5);
+    } catch (error) {
+      console.warn('Failed to enhance windows with optimization:', error);
+      return baseWindows;
+    }
+  }
+
+  /**
+   * Adjust window score based on optimization insights
+   */
+  private adjustScoreBasedOnInsights(
+    window: OptimalWindow,
+    insights: any,
+    marketplace: string,
+    category?: string | null
+  ): number {
+    let adjustedScore = window.score;
+
+    // Boost based on successful time patterns
+    if (insights.timePatterns) {
+      const timePattern = insights.timePatterns.find((p: any) => 
+        p.dayOfWeek === window.dayOfWeek && 
+        p.hourOfDay >= window.startHour && 
+        p.hourOfDay <= window.endHour
+      );
+      
+      if (timePattern && timePattern.successRate > 70) {
+        adjustedScore += Math.min(15, timePattern.successRate - 70);
+      }
+    }
+
+    // Boost based on marketplace performance
+    if (insights.marketplacePerformance) {
+      const marketplacePerf = insights.marketplacePerformance.find((mp: any) => mp.marketplace === marketplace);
+      if (marketplacePerf && marketplacePerf.avgSuccessScore > 60) {
+        adjustedScore += Math.min(10, (marketplacePerf.avgSuccessScore - 60) / 10);
+      }
+    }
+
+    // Boost based on category performance
+    if (category && insights.categoryPerformance) {
+      const categoryPerf = insights.categoryPerformance.find((cp: any) => cp.category === category);
+      if (categoryPerf && categoryPerf.avgSuccessScore > 65) {
+        adjustedScore += Math.min(8, (categoryPerf.avgSuccessScore - 65) / 10);
+      }
+    }
+
+    return Math.min(100, adjustedScore);
+  }
+
+  /**
+   * Create new windows from optimization insights
+   */
+  private createWindowsFromInsights(
+    bestTimes: any[],
+    marketplace: string,
+    category?: string | null
+  ): OptimalWindow[] {
+    return bestTimes
+      .filter((time: any) => time.marketplace === marketplace && (!category || time.category === category))
+      .map((time: any) => ({
+        dayOfWeek: time.dayOfWeek,
+        startHour: time.hourOfDay,
+        endHour: time.hourOfDay + 1,
+        timezone: "UTC",
+        score: Math.min(95, time.successScore + 10) // Boost learned patterns but cap at 95
+      }))
+      .filter((window, index, arr) => 
+        // Remove duplicates
+        arr.findIndex(w => w.dayOfWeek === window.dayOfWeek && w.startHour === window.startHour) === index
+      );
+  }
+
+  /**
+   * Apply schedule recommendations to windows
+   */
+  private applyScheduleRecommendations(
+    windows: OptimalWindow[],
+    recommendations: any
+  ): OptimalWindow[] {
+    if (!recommendations || !Array.isArray(recommendations)) {
+      return windows;
+    }
+
+    return windows.map(window => {
+      const matchingRec = recommendations.find((rec: any) => 
+        rec.dayOfWeek === window.dayOfWeek && 
+        Math.abs(rec.suggestedHour - window.startHour) <= 1
+      );
+
+      if (matchingRec && matchingRec.confidence > 70) {
+        return {
+          ...window,
+          score: window.score + (matchingRec.confidence - 70) / 5,
+          startHour: matchingRec.suggestedHour,
+          endHour: matchingRec.suggestedHour + 1
+        };
+      }
+
+      return window;
+    });
+  }
+
+  /**
+   * Remove duplicate windows and sort by score
+   */
+  private deduplicateAndSortWindows(windows: OptimalWindow[]): OptimalWindow[] {
+    const uniqueWindows = new Map<string, OptimalWindow>();
+
+    windows.forEach(window => {
+      const key = `${window.dayOfWeek}-${window.startHour}`;
+      const existing = uniqueWindows.get(key);
+      
+      if (!existing || window.score > existing.score) {
+        uniqueWindows.set(key, window);
+      }
+    });
+
+    return Array.from(uniqueWindows.values())
+      .sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Get optimized schedule recommendations from the optimization engine
+   */
+  private async getOptimizedScheduleRecommendations(
+    userId: string,
+    listing: Listing,
+    marketplaces: string[]
+  ): Promise<any> {
+    try {
+      // Get schedule suggestions for this specific listing and marketplaces
+      const scheduleRecommendations = await Promise.all(
+        marketplaces.map(marketplace => 
+          recommendationService.generateScheduleSuggestions(userId, {
+            category: listing.category,
+            marketplace,
+            listingId: listing.id
+          })
+        )
+      );
+
+      // Combine recommendations by marketplace
+      const combinedRecommendations: Record<string, any> = {};
+      marketplaces.forEach((marketplace, index) => {
+        combinedRecommendations[marketplace] = scheduleRecommendations[index];
+      });
+
+      return combinedRecommendations;
+    } catch (error) {
+      console.warn('Failed to get optimization recommendations:', error);
+      return {};
+    }
   }
 }
 

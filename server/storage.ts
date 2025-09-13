@@ -195,6 +195,113 @@ export interface IStorage {
   getMarketplaceRetryConfig(marketplace: string): Promise<MarketplaceRetryConfig | undefined>;
   createMarketplaceRetryConfig(config: InsertMarketplaceRetryConfig): Promise<MarketplaceRetryConfig>;
   updateMarketplaceRetryConfig(marketplace: string, updates: Partial<MarketplaceRetryConfig>): Promise<MarketplaceRetryConfig>;
+
+  // Optimization Engine methods
+  getPostingSuccessAnalytics(userId: string, filters?: { 
+    marketplace?: string; 
+    marketplaces?: string[];
+    categories?: string[];
+    startDate?: Date; 
+    endDate?: Date; 
+    category?: string;
+    listingId?: string;
+    dayOfWeek?: number;
+    hourOfDay?: number;
+    priceRange?: string;
+    minEngagement?: number;
+    sold?: boolean;
+    limit?: number;
+  }): Promise<PostingSuccessAnalytics[]>;
+  
+  getPerformanceByTimeSlot(userId: string, marketplace?: string, category?: string): Promise<Array<{
+    dayOfWeek: number;
+    hourOfDay: number;
+    avgSuccessScore: number;
+    avgEngagement: number;
+    conversionRate: number;
+    sampleSize: number;
+  }>>;
+  
+  getPerformanceByPriceRange(userId: string, marketplace?: string, category?: string): Promise<Array<{
+    priceRange: string;
+    avgSuccessScore: number;
+    conversionRate: number;
+    avgDaysToSell: number;
+    sampleSize: number;
+  }>>;
+  
+  getCategoryPerformance(userId: string, marketplace?: string): Promise<Array<{
+    category: string;
+    avgSuccessScore: number;
+    conversionRate: number;
+    avgEngagement: number;
+    totalPosts: number;
+    salesCount: number;
+  }>>;
+  
+  getMarketplacePerformanceSummary(userId: string): Promise<Array<{
+    marketplace: string;
+    avgSuccessScore: number;
+    conversionRate: number;
+    avgEngagement: number;
+    totalPosts: number;
+    salesCount: number;
+    lastPostDate: Date | null;
+  }>>;
+  
+  getEngagementCorrelations(userId: string, marketplace?: string): Promise<Array<{
+    variable1: string;
+    variable2: string;
+    correlation: number;
+    sampleSize: number;
+  }>>;
+  
+  getTimeSeriesData(userId: string, metric: string, groupBy: 'day' | 'week' | 'month', marketplace?: string, category?: string): Promise<Array<{
+    date: string;
+    value: number;
+    count: number;
+  }>>;
+  
+  getSeasonalPatterns(userId: string, marketplace?: string): Promise<Array<{
+    month: number;
+    dayOfWeek: number;
+    avgPerformance: number;
+    sampleSize: number;
+  }>>;
+  
+  getListingsWithLowPerformance(userId: string, threshold?: number): Promise<Array<{
+    listingId: string;
+    title: string;
+    category: string;
+    avgSuccessScore: number;
+    daysSinceListed: number;
+    lastEngagement: Date | null;
+    suggestedActions: string[];
+  }>>;
+  
+  getOptimizationOpportunities(userId: string): Promise<Array<{
+    type: 'timing' | 'pricing' | 'marketplace' | 'content';
+    priority: 'high' | 'medium' | 'low';
+    description: string;
+    potentialImprovement: number;
+    confidence: number;
+    targetListings: number;
+  }>>;
+  
+  getPerformanceTrends(userId: string, days: number, marketplace?: string): Promise<{
+    trend: 'increasing' | 'decreasing' | 'stable';
+    strength: number;
+    changePercent: number;
+    confidence: number;
+  }>;
+  
+  getJobsForOptimization(userId: string, filters?: {
+    status?: string;
+    scheduledAfter?: Date;
+    scheduledBefore?: Date;
+    marketplace?: string;
+    canReschedule?: boolean;
+  }): Promise<Job[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -1001,14 +1108,52 @@ export class MemStorage implements IStorage {
     return successAnalytics;
   }
 
-  async getPostingSuccessAnalytics(userId: string, filters?: { marketplace?: string; startDate?: Date; endDate?: Date; category?: string }): Promise<PostingSuccessAnalytics[]> {
+  async getPostingSuccessAnalytics(userId: string, filters?: { 
+    marketplace?: string; 
+    marketplaces?: string[];
+    categories?: string[];
+    startDate?: Date; 
+    endDate?: Date; 
+    category?: string;
+    listingId?: string;
+    dayOfWeek?: number;
+    hourOfDay?: number;
+    priceRange?: string;
+    minEngagement?: number;
+    sold?: boolean;
+    limit?: number;
+  }): Promise<PostingSuccessAnalytics[]> {
     let analytics = Array.from(this.postingSuccessAnalytics.values()).filter(record => record.userId === userId);
     
     if (filters?.marketplace) {
       analytics = analytics.filter(record => record.marketplace === filters.marketplace);
     }
+    if (filters?.marketplaces && filters.marketplaces.length > 0) {
+      analytics = analytics.filter(record => filters.marketplaces!.includes(record.marketplace));
+    }
     if (filters?.category) {
       analytics = analytics.filter(record => record.category === filters.category);
+    }
+    if (filters?.categories && filters.categories.length > 0) {
+      analytics = analytics.filter(record => record.category && filters.categories!.includes(record.category));
+    }
+    if (filters?.listingId) {
+      analytics = analytics.filter(record => record.listingId === filters.listingId);
+    }
+    if (filters?.dayOfWeek !== undefined) {
+      analytics = analytics.filter(record => record.dayOfWeek === filters.dayOfWeek);
+    }
+    if (filters?.hourOfDay !== undefined) {
+      analytics = analytics.filter(record => record.hourOfDay === filters.hourOfDay);
+    }
+    if (filters?.priceRange) {
+      analytics = analytics.filter(record => record.priceRange === filters.priceRange);
+    }
+    if (filters?.minEngagement !== undefined) {
+      analytics = analytics.filter(record => parseFloat(record.engagement_score || '0') >= filters.minEngagement!);
+    }
+    if (filters?.sold !== undefined) {
+      analytics = analytics.filter(record => record.sold === filters.sold);
     }
     if (filters?.startDate) {
       analytics = analytics.filter(record => new Date(record.postedAt) >= filters.startDate!);
@@ -1017,7 +1162,13 @@ export class MemStorage implements IStorage {
       analytics = analytics.filter(record => new Date(record.postedAt) <= filters.endDate!);
     }
     
-    return analytics.sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+    const sorted = analytics.sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime());
+    
+    if (filters?.limit && filters.limit > 0) {
+      return sorted.slice(0, filters.limit);
+    }
+    
+    return sorted;
   }
 
   async updatePostingSuccessAnalytics(id: string, updates: Partial<PostingSuccessAnalytics>): Promise<PostingSuccessAnalytics> {
@@ -1028,6 +1179,689 @@ export class MemStorage implements IStorage {
     const updated = { ...analytics, ...updates, updatedAt: new Date() };
     this.postingSuccessAnalytics.set(id, updated);
     return updated;
+  }
+
+  // Optimization Engine methods implementations
+  async getPerformanceByTimeSlot(userId: string, marketplace?: string, category?: string): Promise<Array<{
+    dayOfWeek: number;
+    hourOfDay: number;
+    avgSuccessScore: number;
+    avgEngagement: number;
+    conversionRate: number;
+    sampleSize: number;
+  }>> {
+    const analytics = await this.getPostingSuccessAnalytics(userId, { marketplace, category });
+    
+    // Group by time slot (dayOfWeek + hourOfDay)
+    const timeSlots = new Map<string, { 
+      successScores: number[]; 
+      engagementScores: number[]; 
+      sales: number; 
+      total: number; 
+    }>();
+
+    analytics.forEach(record => {
+      const key = `${record.dayOfWeek}_${record.hourOfDay}`;
+      const existing = timeSlots.get(key) || { successScores: [], engagementScores: [], sales: 0, total: 0 };
+      
+      existing.successScores.push(parseFloat(record.success_score || '0'));
+      existing.engagementScores.push(parseFloat(record.engagement_score || '0'));
+      existing.sales += record.sold ? 1 : 0;
+      existing.total += 1;
+      
+      timeSlots.set(key, existing);
+    });
+
+    return Array.from(timeSlots.entries())
+      .map(([key, data]) => {
+        const [dayOfWeek, hourOfDay] = key.split('_').map(Number);
+        return {
+          dayOfWeek,
+          hourOfDay,
+          avgSuccessScore: data.successScores.reduce((sum, score) => sum + score, 0) / data.successScores.length,
+          avgEngagement: data.engagementScores.reduce((sum, score) => sum + score, 0) / data.engagementScores.length,
+          conversionRate: (data.sales / data.total) * 100,
+          sampleSize: data.total
+        };
+      })
+      .filter(slot => slot.sampleSize >= 2); // Minimum sample size for reliability
+  }
+
+  async getPerformanceByPriceRange(userId: string, marketplace?: string, category?: string): Promise<Array<{
+    priceRange: string;
+    avgSuccessScore: number;
+    conversionRate: number;
+    avgDaysToSell: number;
+    sampleSize: number;
+  }>> {
+    const analytics = await this.getPostingSuccessAnalytics(userId, { marketplace, category });
+    
+    // Group by price range
+    const priceRanges = new Map<string, { 
+      successScores: number[]; 
+      sales: number; 
+      total: number; 
+      daysToSell: number[]; 
+    }>();
+
+    analytics.forEach(record => {
+      const priceRange = record.priceRange || 'unknown';
+      const existing = priceRanges.get(priceRange) || { successScores: [], sales: 0, total: 0, daysToSell: [] };
+      
+      existing.successScores.push(parseFloat(record.success_score || '0'));
+      existing.sales += record.sold ? 1 : 0;
+      existing.total += 1;
+      if (record.daysToSell) {
+        existing.daysToSell.push(record.daysToSell);
+      }
+      
+      priceRanges.set(priceRange, existing);
+    });
+
+    return Array.from(priceRanges.entries())
+      .map(([priceRange, data]) => ({
+        priceRange,
+        avgSuccessScore: data.successScores.reduce((sum, score) => sum + score, 0) / data.successScores.length,
+        conversionRate: (data.sales / data.total) * 100,
+        avgDaysToSell: data.daysToSell.length > 0 
+          ? data.daysToSell.reduce((sum, days) => sum + days, 0) / data.daysToSell.length 
+          : 0,
+        sampleSize: data.total
+      }))
+      .filter(range => range.sampleSize >= 3);
+  }
+
+  async getCategoryPerformance(userId: string, marketplace?: string): Promise<Array<{
+    category: string;
+    avgSuccessScore: number;
+    conversionRate: number;
+    avgEngagement: number;
+    totalPosts: number;
+    salesCount: number;
+  }>> {
+    const analytics = await this.getPostingSuccessAnalytics(userId, { marketplace });
+    
+    // Group by category
+    const categories = new Map<string, { 
+      successScores: number[]; 
+      engagementScores: number[]; 
+      sales: number; 
+      total: number; 
+    }>();
+
+    analytics.forEach(record => {
+      const category = record.category || 'Other';
+      const existing = categories.get(category) || { successScores: [], engagementScores: [], sales: 0, total: 0 };
+      
+      existing.successScores.push(parseFloat(record.success_score || '0'));
+      existing.engagementScores.push(parseFloat(record.engagement_score || '0'));
+      existing.sales += record.sold ? 1 : 0;
+      existing.total += 1;
+      
+      categories.set(category, existing);
+    });
+
+    return Array.from(categories.entries())
+      .map(([category, data]) => ({
+        category,
+        avgSuccessScore: data.successScores.reduce((sum, score) => sum + score, 0) / data.successScores.length,
+        conversionRate: (data.sales / data.total) * 100,
+        avgEngagement: data.engagementScores.reduce((sum, score) => sum + score, 0) / data.engagementScores.length,
+        totalPosts: data.total,
+        salesCount: data.sales
+      }))
+      .sort((a, b) => b.avgSuccessScore - a.avgSuccessScore);
+  }
+
+  async getMarketplacePerformanceSummary(userId: string): Promise<Array<{
+    marketplace: string;
+    avgSuccessScore: number;
+    conversionRate: number;
+    avgEngagement: number;
+    totalPosts: number;
+    salesCount: number;
+    lastPostDate: Date | null;
+  }>> {
+    const analytics = await this.getPostingSuccessAnalytics(userId);
+    
+    // Group by marketplace
+    const marketplaces = new Map<string, { 
+      successScores: number[]; 
+      engagementScores: number[]; 
+      sales: number; 
+      total: number;
+      lastPostDate: Date | null;
+    }>();
+
+    analytics.forEach(record => {
+      const existing = marketplaces.get(record.marketplace) || { 
+        successScores: [], 
+        engagementScores: [], 
+        sales: 0, 
+        total: 0,
+        lastPostDate: null
+      };
+      
+      existing.successScores.push(parseFloat(record.success_score || '0'));
+      existing.engagementScores.push(parseFloat(record.engagement_score || '0'));
+      existing.sales += record.sold ? 1 : 0;
+      existing.total += 1;
+      
+      const postDate = new Date(record.postedAt);
+      if (!existing.lastPostDate || postDate > existing.lastPostDate) {
+        existing.lastPostDate = postDate;
+      }
+      
+      marketplaces.set(record.marketplace, existing);
+    });
+
+    return Array.from(marketplaces.entries())
+      .map(([marketplace, data]) => ({
+        marketplace,
+        avgSuccessScore: data.successScores.reduce((sum, score) => sum + score, 0) / data.successScores.length,
+        conversionRate: (data.sales / data.total) * 100,
+        avgEngagement: data.engagementScores.reduce((sum, score) => sum + score, 0) / data.engagementScores.length,
+        totalPosts: data.total,
+        salesCount: data.sales,
+        lastPostDate: data.lastPostDate
+      }))
+      .sort((a, b) => b.avgSuccessScore - a.avgSuccessScore);
+  }
+
+  async getEngagementCorrelations(userId: string, marketplace?: string): Promise<Array<{
+    variable1: string;
+    variable2: string;
+    correlation: number;
+    sampleSize: number;
+  }>> {
+    const analytics = await this.getPostingSuccessAnalytics(userId, { marketplace });
+    
+    if (analytics.length < 10) {
+      return []; // Not enough data for reliable correlations
+    }
+
+    // Calculate correlations between key variables
+    const variables = {
+      hourOfDay: analytics.map(a => a.hourOfDay),
+      dayOfWeek: analytics.map(a => a.dayOfWeek),
+      views: analytics.map(a => a.views || 0),
+      likes: analytics.map(a => a.likes || 0),
+      messages: analytics.map(a => a.messages || 0),
+      successScore: analytics.map(a => parseFloat(a.success_score || '0')),
+      engagementScore: analytics.map(a => parseFloat(a.engagement_score || '0'))
+    };
+
+    const correlations: Array<{
+      variable1: string;
+      variable2: string;
+      correlation: number;
+      sampleSize: number;
+    }> = [];
+
+    // Calculate Pearson correlation for each pair
+    const varNames = Object.keys(variables);
+    for (let i = 0; i < varNames.length; i++) {
+      for (let j = i + 1; j < varNames.length; j++) {
+        const var1 = variables[varNames[i] as keyof typeof variables];
+        const var2 = variables[varNames[j] as keyof typeof variables];
+        
+        const correlation = this.calculateCorrelation(var1, var2);
+        if (Math.abs(correlation) > 0.1) { // Only include meaningful correlations
+          correlations.push({
+            variable1: varNames[i],
+            variable2: varNames[j],
+            correlation,
+            sampleSize: analytics.length
+          });
+        }
+      }
+    }
+
+    return correlations.sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation));
+  }
+
+  private calculateCorrelation(x: number[], y: number[]): number {
+    const n = Math.min(x.length, y.length);
+    if (n < 3) return 0;
+    
+    const meanX = x.reduce((sum, val) => sum + val, 0) / n;
+    const meanY = y.reduce((sum, val) => sum + val, 0) / n;
+    
+    let numerator = 0;
+    let sumSqX = 0;
+    let sumSqY = 0;
+    
+    for (let i = 0; i < n; i++) {
+      const diffX = x[i] - meanX;
+      const diffY = y[i] - meanY;
+      
+      numerator += diffX * diffY;
+      sumSqX += diffX * diffX;
+      sumSqY += diffY * diffY;
+    }
+    
+    const denominator = Math.sqrt(sumSqX * sumSqY);
+    return denominator === 0 ? 0 : numerator / denominator;
+  }
+
+  async getTimeSeriesData(userId: string, metric: string, groupBy: 'day' | 'week' | 'month', marketplace?: string, category?: string): Promise<Array<{
+    date: string;
+    value: number;
+    count: number;
+  }>> {
+    const analytics = await this.getPostingSuccessAnalytics(userId, { marketplace, category });
+    
+    // Group data by time period
+    const timeSeries = new Map<string, { values: number[]; count: number }>();
+
+    analytics.forEach(record => {
+      const date = new Date(record.postedAt);
+      let key: string;
+      
+      switch (groupBy) {
+        case 'day':
+          key = date.toISOString().split('T')[0];
+          break;
+        case 'week':
+          const startOfWeek = new Date(date);
+          startOfWeek.setDate(date.getDate() - date.getDay());
+          key = startOfWeek.toISOString().split('T')[0];
+          break;
+        case 'month':
+          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          break;
+        default:
+          key = date.toISOString().split('T')[0];
+      }
+
+      const existing = timeSeries.get(key) || { values: [], count: 0 };
+      
+      let value: number;
+      switch (metric) {
+        case 'success_score':
+          value = parseFloat(record.success_score || '0');
+          break;
+        case 'engagement_score':
+          value = parseFloat(record.engagement_score || '0');
+          break;
+        case 'views':
+          value = record.views || 0;
+          break;
+        case 'likes':
+          value = record.likes || 0;
+          break;
+        case 'conversion_rate':
+          value = record.sold ? 1 : 0;
+          break;
+        default:
+          value = 0;
+      }
+      
+      existing.values.push(value);
+      existing.count += 1;
+      timeSeries.set(key, existing);
+    });
+
+    return Array.from(timeSeries.entries())
+      .map(([date, data]) => ({
+        date,
+        value: metric === 'conversion_rate' 
+          ? (data.values.reduce((sum, val) => sum + val, 0) / data.count) * 100
+          : data.values.reduce((sum, val) => sum + val, 0) / data.count,
+        count: data.count
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  async getSeasonalPatterns(userId: string, marketplace?: string): Promise<Array<{
+    month: number;
+    dayOfWeek: number;
+    avgPerformance: number;
+    sampleSize: number;
+  }>> {
+    const analytics = await this.getPostingSuccessAnalytics(userId, { marketplace });
+    
+    // Group by month and day of week
+    const patterns = new Map<string, { scores: number[]; count: number }>();
+
+    analytics.forEach(record => {
+      const date = new Date(record.postedAt);
+      const month = date.getMonth();
+      const dayOfWeek = record.dayOfWeek;
+      const key = `${month}_${dayOfWeek}`;
+      
+      const existing = patterns.get(key) || { scores: [], count: 0 };
+      existing.scores.push(parseFloat(record.success_score || '0'));
+      existing.count += 1;
+      patterns.set(key, existing);
+    });
+
+    return Array.from(patterns.entries())
+      .map(([key, data]) => {
+        const [month, dayOfWeek] = key.split('_').map(Number);
+        return {
+          month,
+          dayOfWeek,
+          avgPerformance: data.scores.reduce((sum, score) => sum + score, 0) / data.scores.length,
+          sampleSize: data.count
+        };
+      })
+      .filter(pattern => pattern.sampleSize >= 3); // Minimum sample for reliability
+  }
+
+  async getListingsWithLowPerformance(userId: string, threshold: number = 30): Promise<Array<{
+    listingId: string;
+    title: string;
+    category: string;
+    avgSuccessScore: number;
+    daysSinceListed: number;
+    lastEngagement: Date | null;
+    suggestedActions: string[];
+  }>> {
+    const listings = await this.getListings(userId, { status: 'active' });
+    const analytics = await this.getPostingSuccessAnalytics(userId);
+    
+    const lowPerformingListings: Array<{
+      listingId: string;
+      title: string;
+      category: string;
+      avgSuccessScore: number;
+      daysSinceListed: number;
+      lastEngagement: Date | null;
+      suggestedActions: string[];
+    }> = [];
+
+    for (const listing of listings) {
+      const listingAnalytics = analytics.filter(a => a.listingId === listing.id);
+      
+      if (listingAnalytics.length === 0) continue;
+      
+      const avgSuccessScore = listingAnalytics.reduce((sum, a) => 
+        sum + parseFloat(a.success_score || '0'), 0
+      ) / listingAnalytics.length;
+      
+      if (avgSuccessScore < threshold) {
+        const daysSinceListed = Math.floor(
+          (Date.now() - new Date(listing.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+        );
+        
+        const lastEngagement = listingAnalytics
+          .sort((a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime())[0]
+          ?.postedAt ? new Date(listingAnalytics[0].postedAt) : null;
+
+        const suggestedActions = this.generateSuggestedActions(listing, avgSuccessScore, daysSinceListed);
+
+        lowPerformingListings.push({
+          listingId: listing.id,
+          title: listing.title,
+          category: listing.category || 'Other',
+          avgSuccessScore,
+          daysSinceListed,
+          lastEngagement,
+          suggestedActions
+        });
+      }
+    }
+
+    return lowPerformingListings.sort((a, b) => a.avgSuccessScore - b.avgSuccessScore);
+  }
+
+  private generateSuggestedActions(listing: Listing, avgSuccessScore: number, daysSinceListed: number): string[] {
+    const actions: string[] = [];
+    
+    if (avgSuccessScore < 20) {
+      actions.push('Consider significant price reduction (15-25%)');
+      actions.push('Update images with better quality photos');
+      actions.push('Revise listing title and description');
+    } else if (avgSuccessScore < 35) {
+      actions.push('Adjust price by 10-15%');
+      actions.push('Try posting at different times');
+      actions.push('Add more detailed description');
+    }
+    
+    if (daysSinceListed > 30) {
+      actions.push('Consider refreshing the listing');
+      actions.push('Try cross-posting to additional marketplaces');
+    }
+    
+    if (!listing.images || (Array.isArray(listing.images) && (listing.images as any[]).length < 3)) {
+      actions.push('Add more product images');
+    }
+    
+    return actions;
+  }
+
+  async getOptimizationOpportunities(userId: string): Promise<Array<{
+    type: 'timing' | 'pricing' | 'marketplace' | 'content';
+    priority: 'high' | 'medium' | 'low';
+    description: string;
+    potentialImprovement: number;
+    confidence: number;
+    targetListings: number;
+  }>> {
+    const opportunities: Array<{
+      type: 'timing' | 'pricing' | 'marketplace' | 'content';
+      priority: 'high' | 'medium' | 'low';
+      description: string;
+      potentialImprovement: number;
+      confidence: number;
+      targetListings: number;
+    }> = [];
+
+    // Analyze timing opportunities
+    const timeSlotPerformance = await this.getPerformanceByTimeSlot(userId);
+    const bestTimeSlots = timeSlotPerformance
+      .filter(slot => slot.sampleSize >= 5)
+      .sort((a, b) => b.avgSuccessScore - a.avgSuccessScore)
+      .slice(0, 3);
+    
+    const avgTimeSlotPerformance = timeSlotPerformance.reduce((sum, slot) => 
+      sum + slot.avgSuccessScore, 0) / timeSlotPerformance.length;
+
+    if (bestTimeSlots.length > 0 && bestTimeSlots[0].avgSuccessScore > avgTimeSlotPerformance * 1.2) {
+      opportunities.push({
+        type: 'timing',
+        priority: 'high',
+        description: `Optimize posting times - best slots show ${(bestTimeSlots[0].avgSuccessScore - avgTimeSlotPerformance).toFixed(1)} points higher success`,
+        potentialImprovement: ((bestTimeSlots[0].avgSuccessScore - avgTimeSlotPerformance) / avgTimeSlotPerformance) * 100,
+        confidence: Math.min(90, bestTimeSlots[0].sampleSize * 5),
+        targetListings: await this.countPendingJobs(userId)
+      });
+    }
+
+    // Analyze pricing opportunities
+    const priceRangePerformance = await this.getPerformanceByPriceRange(userId);
+    const bestPriceRange = priceRangePerformance
+      .sort((a, b) => b.conversionRate - a.conversionRate)[0];
+    
+    if (bestPriceRange && priceRangePerformance.length > 1) {
+      const avgConversionRate = priceRangePerformance.reduce((sum, range) => 
+        sum + range.conversionRate, 0) / priceRangePerformance.length;
+      
+      if (bestPriceRange.conversionRate > avgConversionRate * 1.3) {
+        opportunities.push({
+          type: 'pricing',
+          priority: 'medium',
+          description: `Focus on ${bestPriceRange.priceRange} price range - shows ${(bestPriceRange.conversionRate - avgConversionRate).toFixed(1)}% higher conversion`,
+          potentialImprovement: ((bestPriceRange.conversionRate - avgConversionRate) / avgConversionRate) * 100,
+          confidence: Math.min(85, bestPriceRange.sampleSize * 3),
+          targetListings: await this.countActiveListings(userId)
+        });
+      }
+    }
+
+    // Analyze marketplace opportunities
+    const marketplacePerformance = await this.getMarketplacePerformanceSummary(userId);
+    if (marketplacePerformance.length > 1) {
+      const bestMarketplace = marketplacePerformance[0];
+      const avgPerformance = marketplacePerformance.reduce((sum, mp) => 
+        sum + mp.avgSuccessScore, 0) / marketplacePerformance.length;
+      
+      if (bestMarketplace.avgSuccessScore > avgPerformance * 1.25) {
+        opportunities.push({
+          type: 'marketplace',
+          priority: 'medium',
+          description: `Prioritize ${bestMarketplace.marketplace} - shows ${(bestMarketplace.avgSuccessScore - avgPerformance).toFixed(1)} points higher success`,
+          potentialImprovement: ((bestMarketplace.avgSuccessScore - avgPerformance) / avgPerformance) * 100,
+          confidence: Math.min(80, bestMarketplace.totalPosts),
+          targetListings: await this.countActiveListings(userId)
+        });
+      }
+    }
+
+    // Analyze content opportunities
+    const lowPerformingListings = await this.getListingsWithLowPerformance(userId, 35);
+    if (lowPerformingListings.length > 0) {
+      opportunities.push({
+        type: 'content',
+        priority: lowPerformingListings.length > 10 ? 'high' : 'medium',
+        description: `${lowPerformingListings.length} listings need content optimization (images, titles, descriptions)`,
+        potentialImprovement: 40, // Estimated improvement from content optimization
+        confidence: 75,
+        targetListings: lowPerformingListings.length
+      });
+    }
+
+    return opportunities.sort((a, b) => {
+      const priorityOrder = { high: 3, medium: 2, low: 1 };
+      const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+      return b.potentialImprovement - a.potentialImprovement;
+    });
+  }
+
+  private async countPendingJobs(userId: string): Promise<number> {
+    const jobs = await this.getJobs(userId, { status: 'pending' });
+    return jobs.length;
+  }
+
+  private async countActiveListings(userId: string): Promise<number> {
+    const listings = await this.getListings(userId, { status: 'active' });
+    return listings.length;
+  }
+
+  async getPerformanceTrends(userId: string, days: number, marketplace?: string): Promise<{
+    trend: 'increasing' | 'decreasing' | 'stable';
+    strength: number;
+    changePercent: number;
+    confidence: number;
+  }> {
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - (days * 24 * 60 * 60 * 1000));
+    
+    const analytics = await this.getPostingSuccessAnalytics(userId, { 
+      startDate, 
+      endDate, 
+      marketplace 
+    });
+
+    if (analytics.length < 10) {
+      return { trend: 'stable', strength: 0, changePercent: 0, confidence: 0 };
+    }
+
+    // Calculate trend using linear regression on success scores over time
+    const dataPoints = analytics.map((record, index) => ({
+      x: index,
+      y: parseFloat(record.success_score || '0'),
+      date: new Date(record.postedAt)
+    })).sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    const n = dataPoints.length;
+    const sumX = dataPoints.reduce((sum, point) => sum + point.x, 0);
+    const sumY = dataPoints.reduce((sum, point) => sum + point.y, 0);
+    const sumXY = dataPoints.reduce((sum, point) => sum + point.x * point.y, 0);
+    const sumX2 = dataPoints.reduce((sum, point) => sum + point.x * point.x, 0);
+
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    // Calculate R-squared for trend strength
+    const avgY = sumY / n;
+    const totalSumSquares = dataPoints.reduce((sum, point) => sum + Math.pow(point.y - avgY, 2), 0);
+    const residualSumSquares = dataPoints.reduce((sum, point) => {
+      const predicted = slope * point.x + intercept;
+      return sum + Math.pow(point.y - predicted, 2);
+    }, 0);
+
+    const rSquared = 1 - (residualSumSquares / totalSumSquares);
+    const strength = Math.max(0, Math.min(100, rSquared * 100));
+
+    // Determine trend direction
+    let trend: 'increasing' | 'decreasing' | 'stable';
+    if (Math.abs(slope) < 0.1) {
+      trend = 'stable';
+    } else if (slope > 0) {
+      trend = 'increasing';
+    } else {
+      trend = 'decreasing';
+    }
+
+    // Calculate percentage change from start to end
+    const firstHalf = dataPoints.slice(0, Math.floor(n / 2));
+    const secondHalf = dataPoints.slice(Math.floor(n / 2));
+    
+    const firstHalfAvg = firstHalf.reduce((sum, point) => sum + point.y, 0) / firstHalf.length;
+    const secondHalfAvg = secondHalf.reduce((sum, point) => sum + point.y, 0) / secondHalf.length;
+    
+    const changePercent = firstHalfAvg !== 0 
+      ? ((secondHalfAvg - firstHalfAvg) / firstHalfAvg) * 100 
+      : 0;
+
+    const confidence = Math.min(95, 30 + (n * 2) + strength);
+
+    return {
+      trend,
+      strength: Math.round(strength),
+      changePercent: Math.round(changePercent * 100) / 100,
+      confidence: Math.round(confidence)
+    };
+  }
+
+  async getJobsForOptimization(userId: string, filters?: {
+    status?: string;
+    scheduledAfter?: Date;
+    scheduledBefore?: Date;
+    marketplace?: string;
+    canReschedule?: boolean;
+  }): Promise<Job[]> {
+    let jobs = await this.getJobs(userId, { status: filters?.status });
+    
+    if (filters?.scheduledAfter) {
+      jobs = jobs.filter(job => 
+        job.scheduledFor && new Date(job.scheduledFor) > filters.scheduledAfter!
+      );
+    }
+    
+    if (filters?.scheduledBefore) {
+      jobs = jobs.filter(job => 
+        job.scheduledFor && new Date(job.scheduledFor) < filters.scheduledBefore!
+      );
+    }
+    
+    if (filters?.marketplace) {
+      jobs = jobs.filter(job => {
+        const marketplaces = job.data?.marketplaces || [];
+        return Array.isArray(marketplaces) && marketplaces.includes(filters.marketplace);
+      });
+    }
+    
+    if (filters?.canReschedule !== undefined) {
+      jobs = jobs.filter(job => {
+        // Jobs can be rescheduled if they're pending and scheduled for the future
+        const canReschedule = job.status === 'pending' && 
+          job.scheduledFor && 
+          new Date(job.scheduledFor) > new Date();
+        return canReschedule === filters.canReschedule;
+      });
+    }
+    
+    return jobs.sort((a, b) => {
+      // Sort by scheduled time, earliest first
+      if (a.scheduledFor && b.scheduledFor) {
+        return new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime();
+      }
+      return 0;
+    });
   }
 
   // Rate Limit Tracker methods
