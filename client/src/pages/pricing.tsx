@@ -24,10 +24,12 @@ const PRICING_PLANS = [
     badgeVariant: "secondary" as const,
     features: [
       "10 new listings per month",
-      "Access to all 12 marketplaces",
-      "All features available",
-      "Forever free - no expiration",
-      "Basic analytics",
+      "Access to all 29+ marketplaces",
+      "Cross-Platform Inventory Sync™",
+      "Basic Smart Background Posting",
+      "Auto-delist on sale (prevents overselling)",
+      "Real-time sync notifications",
+      "Basic analytics dashboard",
       "Community support",
     ],
     comparison: "2x more than Vendoo's free trial",
@@ -44,12 +46,14 @@ const PRICING_PLANS = [
     listings: "50 new listings",
     features: [
       "50 new listings per month",
-      "Unlimited crossposting",
-      "All 12 marketplaces",
-      "Bulk listing/delisting",
-      "Inventory management",
-      "Auto sales detection",
-      "AI listing assistance",
+      "All 29+ marketplaces included",
+      "Smart Background Auto-Posting™",
+      "Cross-Platform Inventory Sync™",
+      "Intelligent rate limiting",
+      "Webhook sales detection",
+      "AI-powered listing optimization",
+      "Bulk operations (up to 50)",
+      "Real-time WebSocket updates",
       "Email support",
     ],
     comparison: "2x Vendoo listings at same price",
@@ -68,13 +72,15 @@ const PRICING_PLANS = [
     badgeVariant: "default" as const,
     features: [
       "300 new listings per month",
-      "Full automation suite",
-      "Bulk scheduler",
-      "Auto-delist features",
-      "Advanced analytics",
-      "Single dashboard management",
+      "Advanced Smart Scheduling™",
+      "AI Auto-Optimization Engine",
+      "Marketplace-specific timing",
+      "Advanced retry logic",
+      "Bulk operations (up to 300)",
+      "Pattern analysis & learning",
+      "Competition tracking",
+      "Priority rate limits",
       "Priority support",
-      "Custom templates",
     ],
     comparison: "50% more than Crosslist Bronze",
     buttonText: "Choose Growth",
@@ -90,12 +96,14 @@ const PRICING_PLANS = [
     listings: "1,000 new listings",
     features: [
       "1,000 new listings per month",
-      "Poshmark sharing automation",
-      "Auto-share closets",
-      "Bulk offers management",
-      "Advanced analytics reports",
+      "Intelligent batch processing",
+      "Circuit breaker protection",
+      "Dead letter queue recovery",
+      "Advanced analytics & forecasting",
       "Multi-store management",
-      "API access",
+      "Custom webhook endpoints",
+      "API access for automation",
+      "Dedicated success manager",
       "24/7 priority support",
     ],
     comparison: "2x Vendoo Pro at lower price",
@@ -114,12 +122,14 @@ const PRICING_PLANS = [
     badgeVariant: "destructive" as const,
     features: [
       "Unlimited new listings",
-      "AI-powered listing creation",
-      "Automatic price sync",
-      "Multi-account management",
-      "White-glove onboarding",
-      "Dedicated account manager",
+      "White-label capabilities",
+      "Custom ML optimization models",
+      "Dedicated infrastructure",
+      "Premium rate limits",
       "Custom integrations",
+      "Advanced team collaboration",
+      "Business intelligence suite",
+      "White-glove onboarding",
       "24/7 VIP support",
     ],
     comparison: "70% less than Vendoo unlimited",
@@ -132,15 +142,21 @@ const PRICING_PLANS = [
 
 const FEATURE_COMPARISON = [
   { feature: "New Listings/Month", free: "10", starter: "50", growth: "300", professional: "1,000", unlimited: "Unlimited" },
-  { feature: "Marketplaces", free: "All 12", starter: "All 12", growth: "All 12", professional: "All 12", unlimited: "All 12" },
-  { feature: "Crossposting", free: <Check className="w-4 h-4" />, starter: <Check className="w-4 h-4" />, growth: <Check className="w-4 h-4" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
-  { feature: "Bulk Operations", free: <Check className="w-4 h-4" />, starter: <Check className="w-4 h-4" />, growth: <Check className="w-4 h-4" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
-  { feature: "Auto-Delist", free: <X className="w-4 h-4 text-muted-foreground" />, starter: <Check className="w-4 h-4" />, growth: <Check className="w-4 h-4" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
-  { feature: "AI Assistance", free: <X className="w-4 h-4 text-muted-foreground" />, starter: "Basic", growth: "Advanced", professional: "Advanced", unlimited: "Premium" },
-  { feature: "Analytics", free: "Basic", starter: "Standard", growth: "Advanced", professional: "Advanced", unlimited: "Premium" },
-  { feature: "Poshmark Automation", free: <X className="w-4 h-4 text-muted-foreground" />, starter: <X className="w-4 h-4 text-muted-foreground" />, growth: <X className="w-4 h-4 text-muted-foreground" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
-  { feature: "Price Sync", free: <X className="w-4 h-4 text-muted-foreground" />, starter: <X className="w-4 h-4 text-muted-foreground" />, growth: "Manual", professional: "Manual", unlimited: "Automatic" },
-  { feature: "Support", free: "Community", starter: "Email", growth: "Priority", professional: "24/7 Priority", unlimited: "24/7 VIP" },
+  { feature: "Marketplaces", free: "All 29+", starter: "All 29+", growth: "All 29+", professional: "All 29+", unlimited: "All 29+" },
+  { feature: "Cross-Platform Inventory Sync™", free: <Check className="w-4 h-4" />, starter: <Check className="w-4 h-4" />, growth: <Check className="w-4 h-4" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
+  { feature: "Smart Background Auto-Posting™", free: "Basic", starter: <Check className="w-4 h-4" />, growth: <Check className="w-4 h-4" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
+  { feature: "Auto-Delist on Sale", free: <Check className="w-4 h-4" />, starter: <Check className="w-4 h-4" />, growth: <Check className="w-4 h-4" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
+  { feature: "Intelligent Scheduling", free: <X className="w-4 h-4 text-muted-foreground" />, starter: "Basic", growth: "Advanced", professional: "Advanced", unlimited: "Premium" },
+  { feature: "Rate Limiting Protection", free: "Basic", starter: <Check className="w-4 h-4" />, growth: <Check className="w-4 h-4" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
+  { feature: "Webhook Sales Detection", free: <X className="w-4 h-4 text-muted-foreground" />, starter: <Check className="w-4 h-4" />, growth: <Check className="w-4 h-4" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
+  { feature: "AI Optimization Engine", free: <X className="w-4 h-4 text-muted-foreground" />, starter: "Basic", growth: "Advanced", professional: "Advanced", unlimited: "Premium ML" },
+  { feature: "Bulk Operations", free: "Up to 10", starter: "Up to 50", growth: "Up to 300", professional: "Up to 1,000", unlimited: "Unlimited" },
+  { feature: "Retry Logic & Recovery", free: "Basic", starter: <Check className="w-4 h-4" />, growth: <Check className="w-4 h-4" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
+  { feature: "Real-time WebSocket Updates", free: <Check className="w-4 h-4" />, starter: <Check className="w-4 h-4" />, growth: <Check className="w-4 h-4" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
+  { feature: "Analytics & Insights", free: "Basic", starter: "Standard", growth: "Advanced", professional: "Predictive", unlimited: "Business Intelligence" },
+  { feature: "Circuit Breaker Protection", free: <X className="w-4 h-4 text-muted-foreground" />, starter: <X className="w-4 h-4 text-muted-foreground" />, growth: <Check className="w-4 h-4" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
+  { feature: "API Access", free: <X className="w-4 h-4 text-muted-foreground" />, starter: <X className="w-4 h-4 text-muted-foreground" />, growth: <X className="w-4 h-4 text-muted-foreground" />, professional: <Check className="w-4 h-4" />, unlimited: <Check className="w-4 h-4" /> },
+  { feature: "Support", free: "Community", starter: "Email", growth: "Priority", professional: "24/7 Priority", unlimited: "24/7 VIP + Dedicated Manager" },
 ];
 
 export default function Pricing() {
@@ -347,7 +363,42 @@ export default function Pricing() {
 
         {/* Competitive Advantages */}
         <div className="text-center mb-16">
-          <h2 className="text-3xl font-bold mb-8">Why CrossList Pro Wins</h2>
+          <h2 className="text-3xl font-bold mb-8">Revolutionary Features That Set Us Apart</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto mb-8">
+            <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
+              <CardHeader>
+                <Zap className="w-8 h-8 text-primary mx-auto mb-2" />
+                <CardTitle className="text-lg">Cross-Platform Inventory Sync™</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Prevents overselling automatically!</strong> When an item sells on eBay, it's instantly delisted from Mercari, Poshmark, and all other platforms. No more double-selling nightmares.
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
+              <CardHeader>
+                <Rocket className="w-8 h-8 text-primary mx-auto mb-2" />
+                <CardTitle className="text-lg">Smart Background Auto-Posting™</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  <strong>AI-powered scheduling magic!</strong> Posts at optimal times for each marketplace (eBay Sunday evenings, fashion on weekends). Respects rate limits and maximizes engagement automatically.
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
+              <CardHeader>
+                <TrendingUp className="w-8 h-8 text-primary mx-auto mb-2" />
+                <CardTitle className="text-lg">AI Auto-Optimization Engine</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  <strong>Learns from your success!</strong> Our ML algorithms analyze your sales patterns and automatically optimize posting times, pricing, and marketplace selection for maximum profit.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <Card>
               <CardHeader>
@@ -356,29 +407,29 @@ export default function Pricing() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">
-                  Unlike competitors with trials, our free plan never expires. Start with 10 listings/month forever.
+                  Unlike competitors with trials, our free plan never expires. Start with 10 listings/month forever with inventory sync included!
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader>
-                <TrendingUp className="w-8 h-8 text-primary mx-auto mb-2" />
-                <CardTitle className="text-lg">Better Value</CardTitle>
+                <CreditCard className="w-8 h-8 text-primary mx-auto mb-2" />
+                <CardTitle className="text-lg">70% Lower Cost</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">
-                  Up to 70% less expensive than Vendoo, List Perfectly, and Crosslist for similar features.
+                  More features at a fraction of the price. Vendoo charges $149/mo for unlimited - we charge $44.99 with better technology.
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader>
                 <Crown className="w-8 h-8 text-primary mx-auto mb-2" />
-                <CardTitle className="text-lg">All Features Included</CardTitle>
+                <CardTitle className="text-lg">29+ Marketplaces</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">
-                  No feature gates. Even free users get access to all 12 marketplaces and core features.
+                  Support for all major platforms including eBay, Mercari, Poshmark, Facebook, Depop, Vinted, and 23 more. All included in every plan.
                 </p>
               </CardContent>
             </Card>
