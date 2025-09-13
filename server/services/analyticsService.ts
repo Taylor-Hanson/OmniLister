@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import type { AnalyticsEvent, SalesMetrics, InventoryMetrics, MarketplaceMetrics, Listing } from "@shared/schema";
 import { subDays, startOfDay, endOfDay, differenceInDays } from "date-fns";
+import { crossPlatformSyncService } from "./crossPlatformSyncService";
 
 export class AnalyticsService {
   // Track user events and actions
@@ -16,7 +17,7 @@ export class AnalyticsService {
   }
 
   // Track sale metrics
-  async trackSale(userId: string, listing: Listing, marketplace: string, salePrice: number, fees: number) {
+  async trackSale(userId: string, listing: Listing, marketplace: string, salePrice: number, fees: number, saleData?: any) {
     const profit = salePrice - fees;
     const margin = (profit / salePrice) * 100;
     const daysToSell = listing.createdAt ? differenceInDays(new Date(), new Date(listing.createdAt)) : null;
@@ -44,6 +45,64 @@ export class AnalyticsService {
 
     // Update listing status
     await storage.updateListing(listing.id, { status: 'sold' });
+
+    // TRIGGER CROSS-PLATFORM SYNC - Automatically delist from other marketplaces
+    try {
+      console.log(`🚀 Triggering cross-platform sync for listing ${listing.id} sold on ${marketplace}`);
+      
+      const syncResult = await crossPlatformSyncService.triggerSaleSync(
+        userId, 
+        listing, 
+        marketplace, 
+        salePrice, 
+        {
+          ...saleData,
+          fees,
+          profit,
+          margin,
+          trackingSource: 'analytics_service',
+          triggerTime: new Date().toISOString()
+        }
+      );
+
+      console.log(`✅ Cross-platform sync completed for listing ${listing.id}:`, {
+        syncJobId: syncResult.syncJobId,
+        totalMarketplaces: syncResult.totalMarketplaces,
+        successful: syncResult.successful,
+        failed: syncResult.failed,
+        status: syncResult.status,
+        duration: `${syncResult.duration}ms`
+      });
+
+      // Track sync event for analytics
+      await this.trackEvent(userId, 'cross_platform_sync_triggered', {
+        listingId: listing.id,
+        soldMarketplace: marketplace,
+        syncJobId: syncResult.syncJobId,
+        totalMarketplaces: syncResult.totalMarketplaces,
+        successful: syncResult.successful,
+        failed: syncResult.failed,
+        status: syncResult.status,
+        syncDuration: syncResult.duration
+      }, marketplace, listing.id);
+
+    } catch (syncError: any) {
+      console.error(`❌ Cross-platform sync failed for listing ${listing.id}:`, syncError);
+      
+      // Track sync failure event
+      await this.trackEvent(userId, 'cross_platform_sync_failed', {
+        listingId: listing.id,
+        soldMarketplace: marketplace,
+        error: syncError.message,
+        errorDetails: {
+          name: syncError.name,
+          stack: syncError.stack?.substring(0, 500) // Limit stack trace length
+        }
+      }, marketplace, listing.id);
+
+      // Don't throw the error - sale tracking should still complete even if sync fails
+      // This ensures that the core sale recording isn't disrupted by sync issues
+    }
   }
 
   // Calculate overview metrics
@@ -110,13 +169,15 @@ export class AnalyticsService {
     // Group by date for time series
     const revenueByDate = new Map<string, { revenue: number; profit: number; fees: number }>();
     salesMetrics.forEach(sale => {
-      const date = new Date(sale.soldAt).toISOString().split('T')[0];
-      const existing = revenueByDate.get(date) || { revenue: 0, profit: 0, fees: 0 };
-      revenueByDate.set(date, {
-        revenue: existing.revenue + parseFloat(sale.salePrice),
-        profit: existing.profit + parseFloat(sale.profit),
-        fees: existing.fees + parseFloat(sale.fees),
-      });
+      if (sale.soldAt) {
+        const date = new Date(sale.soldAt).toISOString().split('T')[0];
+        const existing = revenueByDate.get(date) || { revenue: 0, profit: 0, fees: 0 };
+        revenueByDate.set(date, {
+          revenue: existing.revenue + parseFloat(sale.salePrice),
+          profit: existing.profit + parseFloat(sale.profit),
+          fees: existing.fees + parseFloat(sale.fees),
+        });
+      }
     });
 
     // Group by marketplace
@@ -311,9 +372,11 @@ export class AnalyticsService {
     const dailyRevenue = new Map<string, number>();
     
     salesMetrics.forEach(sale => {
-      const date = new Date(sale.soldAt).toISOString().split('T')[0];
-      dailySales.set(date, (dailySales.get(date) || 0) + 1);
-      dailyRevenue.set(date, (dailyRevenue.get(date) || 0) + parseFloat(sale.salePrice));
+      if (sale.soldAt) {
+        const date = new Date(sale.soldAt).toISOString().split('T')[0];
+        dailySales.set(date, (dailySales.get(date) || 0) + 1);
+        dailyRevenue.set(date, (dailyRevenue.get(date) || 0) + parseFloat(sale.salePrice));
+      }
     });
 
     // Calculate moving averages

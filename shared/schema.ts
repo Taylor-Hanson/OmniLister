@@ -966,6 +966,57 @@ export const batchQueue = pgTable("batch_queue", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Cross-Platform Sync Jobs - Track automatic sync operations when items are sold
+export const crossPlatformSyncJobs = pgTable("cross_platform_sync_jobs", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  listingId: uuid("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
+  soldMarketplace: text("sold_marketplace").notNull(), // The marketplace where the item was sold
+  syncType: text("sync_type").notNull(), // automatic_delist, manual_sync, inventory_update
+  status: text("status").default("pending"), // pending, processing, completed, failed, partial
+  totalMarketplaces: integer("total_marketplaces").default(0), // Total marketplaces to sync
+  completedMarketplaces: integer("completed_marketplaces").default(0), // Successfully synced marketplaces
+  failedMarketplaces: integer("failed_marketplaces").default(0), // Failed marketplace syncs
+  syncTrigger: text("sync_trigger").notNull(), // sale_detected, manual_trigger, scheduled_sync
+  triggerData: jsonb("trigger_data"), // Additional data about the trigger event
+  targetMarketplaces: text("target_marketplaces").array(), // List of marketplaces to delist from
+  processingDetails: jsonb("processing_details"), // Real-time processing status per marketplace
+  errorSummary: jsonb("error_summary"), // Aggregated error information
+  priority: integer("priority").default(5), // Sync job priority (higher = more urgent)
+  estimatedDuration: integer("estimated_duration"), // Estimated time to complete in seconds
+  actualDuration: integer("actual_duration"), // Actual time taken in seconds
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Cross-Platform Sync History - Detailed audit log of all sync operations
+export const crossPlatformSyncHistory = pgTable("cross_platform_sync_history", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  syncJobId: uuid("sync_job_id").references(() => crossPlatformSyncJobs.id, { onDelete: "set null" }),
+  listingId: uuid("listing_id").references(() => listings.id, { onDelete: "set null" }),
+  listingPostId: uuid("listing_post_id").references(() => listingPosts.id, { onDelete: "set null" }),
+  sourceMarketplace: text("source_marketplace").notNull(), // Where the sale/trigger occurred
+  targetMarketplace: text("target_marketplace").notNull(), // Marketplace being synced
+  syncAction: text("sync_action").notNull(), // delist, update_quantity, mark_sold, suspend
+  status: text("status").notNull(), // success, failed, skipped, rate_limited
+  previousStatus: text("previous_status"), // Previous listing status before sync
+  newStatus: text("new_status"), // New listing status after sync
+  externalId: text("external_id"), // External marketplace listing ID
+  externalUrl: text("external_url"), // URL of the delisted/updated item
+  responseData: jsonb("response_data"), // API response from marketplace
+  errorDetails: jsonb("error_details"), // Detailed error information
+  errorCategory: text("error_category"), // rate_limit, auth_error, network_error, marketplace_error, validation_error
+  retryAttempt: integer("retry_attempt").default(0), // Which retry attempt this was
+  maxRetries: integer("max_retries").default(3), // Maximum retries allowed
+  processingTime: integer("processing_time"), // Time taken for this operation in milliseconds
+  rateLimitDelay: integer("rate_limit_delay"), // Delay applied due to rate limiting in milliseconds
+  metadata: jsonb("metadata"), // Additional sync metadata
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Insert schemas for batch tables
 export const insertBatchSchema = createInsertSchema(batches).omit({
   id: true,
@@ -1002,6 +1053,18 @@ export const insertBatchQueueSchema = createInsertSchema(batchQueue).omit({
   updatedAt: true,
 });
 
+// Insert schemas for cross-platform sync tables
+export const insertCrossPlatformSyncJobSchema = createInsertSchema(crossPlatformSyncJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCrossPlatformSyncHistorySchema = createInsertSchema(crossPlatformSyncHistory).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Batch types
 export type Batch = typeof batches.$inferSelect;
 export type InsertBatch = z.infer<typeof insertBatchSchema>;
@@ -1015,3 +1078,9 @@ export type BatchAnalytics = typeof batchAnalytics.$inferSelect;
 export type InsertBatchAnalytics = z.infer<typeof insertBatchAnalyticsSchema>;
 export type BatchQueue = typeof batchQueue.$inferSelect;
 export type InsertBatchQueue = z.infer<typeof insertBatchQueueSchema>;
+
+// Cross-Platform Sync types
+export type CrossPlatformSyncJob = typeof crossPlatformSyncJobs.$inferSelect;
+export type InsertCrossPlatformSyncJob = z.infer<typeof insertCrossPlatformSyncJobSchema>;
+export type CrossPlatformSyncHistory = typeof crossPlatformSyncHistory.$inferSelect;
+export type InsertCrossPlatformSyncHistory = z.infer<typeof insertCrossPlatformSyncHistorySchema>;

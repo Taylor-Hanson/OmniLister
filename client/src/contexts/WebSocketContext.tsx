@@ -71,6 +71,35 @@ interface QueueStatusEvent {
   }>;
 }
 
+interface CrossPlatformSyncEvent {
+  eventType: 'sync_started' | 'sync_completed' | 'sync_error';
+  data: {
+    syncJobId?: string;
+    listingId: string;
+    listingTitle: string;
+    soldMarketplace: string;
+    salePrice?: number;
+    status?: 'completed' | 'partial' | 'failed';
+    successful?: number;
+    failed?: number;
+    totalMarketplaces?: number;
+    duration?: number;
+    error?: string;
+    timestamp: string;
+  };
+}
+
+interface CrossPlatformSyncProgressEvent {
+  data: {
+    syncJobId: string;
+    marketplace: string;
+    status: 'processing' | 'success' | 'error';
+    message: string;
+    error?: string;
+    timestamp: string;
+  };
+}
+
 interface WebSocketContextType {
   isConnected: boolean;
   lastMessage: any;
@@ -202,6 +231,65 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
         setActiveJobs(queueData.jobs);
       });
 
+      // Handle cross-platform sync events
+      const unsubscribeCrossPlatformSync = wsManagerRef.current.on('cross_platform_sync', (event: CrossPlatformSyncEvent) => {
+        const { eventType, data } = event;
+        
+        switch (eventType) {
+          case 'sync_started':
+            toast({
+              title: "🚀 Auto-Delisting Started",
+              description: `"${data.listingTitle}" sold on ${data.soldMarketplace}. Removing from other marketplaces...`,
+              variant: "default",
+            });
+            break;
+            
+          case 'sync_completed':
+            const successMessage = data.status === 'completed' 
+              ? `Successfully removed from all ${data.totalMarketplaces} marketplaces`
+              : data.status === 'partial'
+              ? `Removed from ${data.successful}/${data.totalMarketplaces} marketplaces (${data.failed} failed)`
+              : `Failed to remove from ${data.totalMarketplaces} marketplaces`;
+              
+            toast({
+              title: data.status === 'completed' ? "✅ Auto-Delisting Complete" : 
+                     data.status === 'partial' ? "⚠️ Auto-Delisting Partial" : "❌ Auto-Delisting Failed",
+              description: `"${data.listingTitle}": ${successMessage}`,
+              variant: data.status === 'failed' ? "destructive" : "default",
+            });
+            break;
+            
+          case 'sync_error':
+            toast({
+              title: "❌ Auto-Delisting Error",
+              description: `Failed to auto-delist "${data.listingTitle}": ${data.error}`,
+              variant: "destructive",
+            });
+            break;
+        }
+      });
+
+      // Handle cross-platform sync progress updates
+      const unsubscribeCrossPlatformSyncProgress = wsManagerRef.current.on('cross_platform_sync_progress', (event: CrossPlatformSyncProgressEvent) => {
+        const { data } = event;
+        
+        // Only show toast for errors and successes, not processing updates to avoid spam
+        if (data.status === 'success') {
+          toast({
+            title: "✅ Delisted",
+            description: `Successfully removed from ${data.marketplace}`,
+            variant: "default",
+          });
+        } else if (data.status === 'error') {
+          toast({
+            title: "❌ Delisting Failed",
+            description: `Failed to remove from ${data.marketplace}: ${data.error}`,
+            variant: "destructive",
+          });
+        }
+        // Processing updates are not shown as toasts to avoid notification spam
+      });
+
       // Store unsubscribers for cleanup
       unsubscribersRef.current = [
         unsubscribeConnection,
@@ -212,6 +300,8 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
         unsubscribeSmartSchedule,
         unsubscribeMarketplaceHealth,
         unsubscribeQueueStatus,
+        unsubscribeCrossPlatformSync,
+        unsubscribeCrossPlatformSyncProgress,
       ];
 
       // Connect to WebSocket
