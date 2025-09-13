@@ -1,6 +1,7 @@
-import { type Job, type Listing, type ListingPost } from "@shared/schema";
+import { type Job, type Listing, type ListingPost, type User } from "@shared/schema";
 import { storage } from "../storage";
 import { marketplaceService } from "./marketplaceService";
+import { smartScheduler } from "./smartScheduler";
 
 export interface JobProcessor {
   process(job: Job): Promise<void>;
@@ -280,25 +281,168 @@ export class QueueService {
     }
   }
 
-  async createPostListingJob(userId: string, listingId: string, marketplaces: string[]): Promise<Job> {
-    return storage.createJob(userId, {
-      type: "post-listing",
-      data: { listingId, marketplaces },
+  /**
+   * Create intelligently scheduled posting job for multiple marketplaces
+   */
+  async createPostListingJob(userId: string, listingId: string, marketplaces: string[], options?: {
+    requestedTime?: Date;
+    priority?: number;
+    useSmartScheduling?: boolean;
+  }): Promise<Job[]> {
+    const { requestedTime, priority = 0, useSmartScheduling = true } = options || {};
+    
+    if (!useSmartScheduling) {
+      // Fallback to simple scheduling
+      return [await storage.createJob(userId, {
+        type: "post-listing",
+        data: { listingId, marketplaces },
+        priority,
+        scheduledFor: requestedTime,
+        smartScheduled: false,
+      })];
+    }
+
+    // Get user and listing data for smart scheduling
+    const [user, listing] = await Promise.all([
+      storage.getUser(userId),
+      storage.getListing(listingId),
+    ]);
+
+    if (!user || !listing) {
+      throw new Error("User or listing not found");
+    }
+
+    // Use smart scheduler to determine optimal posting times
+    const schedulingResult = await smartScheduler.scheduleJobs({
+      user,
+      listing,
+      requestedMarketplaces: marketplaces,
+      requestedTime,
+      priority,
     });
+
+    // Create jobs with intelligent scheduling
+    const jobs: Job[] = [];
+    const marketplaceGroup = `${listingId}-${Date.now()}`; // Group ID for batch tracking
+    
+    for (const scheduledJob of schedulingResult.scheduledJobs) {
+      const job = await storage.createJob(userId, {
+        type: "post-listing",
+        data: { 
+          listingId, 
+          marketplaces: [scheduledJob.marketplace],
+          schedulingReason: scheduledJob.reasoning,
+        },
+        scheduledFor: scheduledJob.scheduledFor,
+        smartScheduled: true,
+        originalScheduledFor: requestedTime,
+        marketplaceGroup,
+        priority,
+        schedulingMetadata: {
+          confidenceScore: scheduledJob.confidenceScore,
+          estimatedSuccessRate: scheduledJob.estimatedSuccessRate,
+          distributionStrategy: schedulingResult.distributionStrategy,
+          totalDelay: schedulingResult.totalDelay,
+        },
+      });
+      jobs.push(job);
+    }
+
+    // Log smart scheduling result
+    await storage.createAuditLog({
+      userId,
+      action: "smart_schedule_created",
+      entityType: "listing",
+      entityId: listingId,
+      metadata: {
+        marketplaces,
+        schedulingResult,
+        jobsCreated: jobs.length,
+      },
+      ipAddress: null,
+      userAgent: null,
+    });
+
+    return jobs;
   }
 
-  async createDelistListingJob(userId: string, listingId: string, marketplaces?: string[]): Promise<Job> {
+  /**
+   * Create delist job with intelligent timing (immediate for urgent delisting)
+   */
+  async createDelistListingJob(userId: string, listingId: string, marketplaces?: string[], urgent = false): Promise<Job> {
+    // Delisting is usually urgent, so schedule immediately with minimal delay
+    const scheduledFor = urgent ? new Date() : new Date(Date.now() + 30000); // 30 second delay for non-urgent
+
     return storage.createJob(userId, {
       type: "delist-listing",
-      data: { listingId, marketplaces },
+      data: { listingId, marketplaces, urgent },
+      scheduledFor,
+      smartScheduled: false, // Delisting doesn't use smart scheduling
+      priority: urgent ? 10 : 5, // High priority for urgent delisting
     });
   }
 
+  /**
+   * Create sync inventory job with smart timing to avoid conflicts
+   */
   async createSyncInventoryJob(userId: string, listingId: string, soldMarketplace: string): Promise<Job> {
+    // Inventory sync should happen quickly but avoid conflicts with posting jobs
+    const scheduledFor = new Date(Date.now() + 10000); // 10 second delay to avoid conflicts
+
     return storage.createJob(userId, {
       type: "sync-inventory",
       data: { listingId, soldMarketplace },
+      scheduledFor,
+      smartScheduled: true, // Use smart scheduling for inventory sync timing
+      priority: 8, // High priority but not urgent
+      schedulingMetadata: {
+        reason: "inventory_sync_after_sale",
+        soldMarketplace,
+      },
     });
+  }
+
+  /**
+   * Create batch posting job for multiple listings with optimal distribution
+   */
+  async createBatchPostingJob(userId: string, listingData: Array<{
+    listingId: string;
+    marketplaces: string[];
+    priority?: number;
+  }>, options?: {
+    requestedTime?: Date;
+    distributionMinutes?: number; // Spread posts over this many minutes
+  }): Promise<Job[]> {
+    const { requestedTime, distributionMinutes = 60 } = options || {};
+    const allJobs: Job[] = [];
+
+    // Sort by priority (higher first)
+    const sortedListings = listingData.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+    
+    let currentDelay = 0;
+    const delayIncrement = (distributionMinutes * 60 * 1000) / listingData.length; // Distribute evenly
+    
+    for (const listing of sortedListings) {
+      const listingRequestedTime = requestedTime 
+        ? new Date(requestedTime.getTime() + currentDelay)
+        : new Date(Date.now() + currentDelay);
+      
+      const jobs = await this.createPostListingJob(
+        userId, 
+        listing.listingId, 
+        listing.marketplaces,
+        {
+          requestedTime: listingRequestedTime,
+          priority: listing.priority,
+          useSmartScheduling: true,
+        }
+      );
+      
+      allJobs.push(...jobs);
+      currentDelay += delayIncrement;
+    }
+
+    return allJobs;
   }
 }
 

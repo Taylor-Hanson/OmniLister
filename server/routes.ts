@@ -574,8 +574,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Listing not found" });
       }
 
-      const job = await queueService.createPostListingJob(req.user!.id, listingId, marketplaces);
-      res.json(job);
+      const jobs = await queueService.createPostListingJob(req.user!.id, listingId, marketplaces);
+      res.json({ jobs, scheduled: jobs.length, smartScheduled: jobs.some(j => j.smartScheduled) });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
