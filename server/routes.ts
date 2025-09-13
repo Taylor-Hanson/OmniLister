@@ -73,6 +73,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Pricing routes
+  app.get("/api/pricing", async (req, res) => {
+    const pricingPlans = [
+      {
+        id: "free",
+        name: "Free",
+        price: 0,
+        listingCredits: 10,
+        features: [
+          "10 new listings per month",
+          "Access to all 12 marketplaces",
+          "Basic analytics",
+          "Forever free"
+        ]
+      },
+      {
+        id: "starter",
+        name: "Starter",
+        price: 9.99,
+        listingCredits: 50,
+        features: [
+          "50 new listings per month",
+          "Unlimited crossposting",
+          "AI listing assistance",
+          "Email support"
+        ]
+      },
+      {
+        id: "growth",
+        name: "Growth",
+        price: 29.99,
+        listingCredits: 300,
+        features: [
+          "300 new listings per month",
+          "Full automation suite",
+          "Advanced analytics",
+          "Priority support"
+        ]
+      },
+      {
+        id: "professional",
+        name: "Professional",
+        price: 39.99,
+        listingCredits: 1000,
+        features: [
+          "1,000 new listings per month",
+          "Poshmark automation",
+          "API access",
+          "24/7 priority support"
+        ]
+      },
+      {
+        id: "unlimited",
+        name: "Unlimited",
+        price: 44.99,
+        listingCredits: null,
+        features: [
+          "Unlimited new listings",
+          "AI-powered listing creation",
+          "Automatic price sync",
+          "24/7 VIP support"
+        ]
+      }
+    ];
+    res.json(pricingPlans);
+  });
+
+  app.get("/api/subscription/usage", requireAuth, async (req, res) => {
+    try {
+      const user = req.user!;
+      const usage = {
+        plan: user.plan,
+        listingCredits: user.listingCredits,
+        listingsUsedThisMonth: user.listingsUsedThisMonth || 0,
+        billingCycleStart: user.billingCycleStart,
+        canCreateListing: await storage.canCreateListing(user.id),
+        percentageUsed: user.listingCredits ? 
+          Math.round(((user.listingsUsedThisMonth || 0) / user.listingCredits) * 100) : 0
+      };
+      res.json(usage);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Onboarding routes
   app.get("/api/onboarding/progress", requireAuth, async (req, res) => {
     try {
@@ -307,8 +392,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/listings", requireAuth, async (req, res) => {
     try {
+      // Check if user can create more listings
+      const canCreate = await storage.canCreateListing(req.user!.id);
+      if (!canCreate) {
+        return res.status(403).json({ 
+          error: "Monthly listing limit reached. Please upgrade your plan for more listings.",
+          upgrade_url: "/pricing"
+        });
+      }
+
       const listingData = insertListingSchema.parse(req.body);
       const listing = await storage.createListing(req.user!.id, listingData);
+      
+      // Increment usage counter
+      await storage.incrementListingUsage(req.user!.id);
+      
       res.json(listing);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

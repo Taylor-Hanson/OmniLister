@@ -15,6 +15,12 @@ const navigationItems = [
     testId: "nav-dashboard"
   },
   {
+    href: "/pricing",
+    icon: "fas fa-tag",
+    label: "Pricing",
+    testId: "nav-pricing"
+  },
+  {
     href: "/create-listing",
     icon: "fas fa-plus-circle",
     label: "Create Listing",
