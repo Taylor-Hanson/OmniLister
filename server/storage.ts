@@ -27,7 +27,12 @@ import {
   type BatchAnalytics, type InsertBatchAnalytics,
   type BatchQueue, type InsertBatchQueue,
   type CrossPlatformSyncJob, type InsertCrossPlatformSyncJob,
-  type CrossPlatformSyncHistory, type InsertCrossPlatformSyncHistory
+  type CrossPlatformSyncHistory, type InsertCrossPlatformSyncHistory,
+  type WebhookConfiguration, type InsertWebhookConfiguration,
+  type WebhookEvent, type InsertWebhookEvent,
+  type WebhookDelivery, type InsertWebhookDelivery,
+  type PollingSchedule, type InsertPollingSchedule,
+  type WebhookHealthMetrics, type InsertWebhookHealthMetrics
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -400,6 +405,61 @@ export interface IStorage {
     topMarketplaces: Array<{ marketplace: string; count: number }>;
     recentSyncs: CrossPlatformSyncJob[];
   }>;
+
+  // Webhook Configuration methods
+  getWebhookConfigurations(userId: string, marketplace?: string): Promise<WebhookConfiguration[]>;
+  getWebhookConfiguration(userId: string, marketplace: string): Promise<WebhookConfiguration | undefined>;
+  createWebhookConfiguration(userId: string, config: InsertWebhookConfiguration): Promise<WebhookConfiguration>;
+  updateWebhookConfiguration(id: string, updates: Partial<WebhookConfiguration>): Promise<WebhookConfiguration>;
+  deleteWebhookConfiguration(id: string): Promise<void>;
+
+  // Webhook Event methods
+  getWebhookEvents(userId?: string, filters?: { 
+    marketplace?: string; 
+    eventType?: string; 
+    processingStatus?: string; 
+    startDate?: Date; 
+    endDate?: Date;
+    listingId?: string;
+    limit?: number;
+  }): Promise<WebhookEvent[]>;
+  getWebhookEvent(id: string): Promise<WebhookEvent | undefined>;
+  getWebhookEventByExternalId(marketplace: string, eventId: string): Promise<WebhookEvent | undefined>;
+  createWebhookEvent(event: InsertWebhookEvent): Promise<WebhookEvent>;
+  updateWebhookEvent(id: string, updates: Partial<WebhookEvent>): Promise<WebhookEvent>;
+  deleteWebhookEvent(id: string): Promise<void>;
+
+  // Webhook Delivery methods
+  getWebhookDeliveries(webhookConfigId?: string, filters?: { 
+    marketplace?: string; 
+    successful?: boolean; 
+    startDate?: Date; 
+    endDate?: Date;
+    limit?: number;
+  }): Promise<WebhookDelivery[]>;
+  getWebhookDelivery(id: string): Promise<WebhookDelivery | undefined>;
+  createWebhookDelivery(delivery: InsertWebhookDelivery): Promise<WebhookDelivery>;
+  updateWebhookDelivery(id: string, updates: Partial<WebhookDelivery>): Promise<WebhookDelivery>;
+
+  // Polling Schedule methods
+  getPollingSchedules(userId: string, marketplace?: string): Promise<PollingSchedule[]>;
+  getPollingSchedule(userId: string, marketplace: string): Promise<PollingSchedule | undefined>;
+  createPollingSchedule(userId: string, schedule: InsertPollingSchedule): Promise<PollingSchedule>;
+  updatePollingSchedule(id: string, updates: Partial<PollingSchedule>): Promise<PollingSchedule>;
+  deletePollingSchedule(id: string): Promise<void>;
+  getPollingSchedulesDueForPoll(): Promise<PollingSchedule[]>;
+
+  // Webhook Health Metrics methods
+  getWebhookHealthMetrics(marketplace?: string, timeWindow?: Date): Promise<WebhookHealthMetrics[]>;
+  createWebhookHealthMetrics(metrics: InsertWebhookHealthMetrics): Promise<WebhookHealthMetrics>;
+  updateWebhookHealthMetrics(id: string, updates: Partial<WebhookHealthMetrics>): Promise<WebhookHealthMetrics>;
+  getWebhookHealthSummary(marketplace?: string, hours?: number): Promise<{
+    totalEvents: number;
+    successRate: number;
+    averageProcessingTime: number;
+    healthScore: number;
+    uptime: number;
+  }>;
 }
 
 export class MemStorage implements IStorage {
@@ -438,6 +498,13 @@ export class MemStorage implements IStorage {
   // Cross-Platform Sync storage
   private crossPlatformSyncJobs: Map<string, CrossPlatformSyncJob> = new Map();
   private crossPlatformSyncHistory: Map<string, CrossPlatformSyncHistory> = new Map();
+
+  // Webhook storage
+  private webhookConfigurations: Map<string, WebhookConfiguration> = new Map();
+  private webhookEvents: Map<string, WebhookEvent> = new Map();
+  private webhookDeliveries: Map<string, WebhookDelivery> = new Map();
+  private pollingSchedules: Map<string, PollingSchedule> = new Map();
+  private webhookHealthMetrics: Map<string, WebhookHealthMetrics> = new Map();
 
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
@@ -2444,6 +2511,361 @@ export class MemStorage implements IStorage {
       avgSyncTime,
       topMarketplaces,
       recentSyncs
+    };
+  }
+
+  // Webhook Configuration methods
+  async getWebhookConfigurations(userId: string, marketplace?: string): Promise<WebhookConfiguration[]> {
+    let configs = Array.from(this.webhookConfigurations.values()).filter(config => config.userId === userId);
+    if (marketplace) {
+      configs = configs.filter(config => config.marketplace === marketplace);
+    }
+    return configs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getWebhookConfiguration(userId: string, marketplace: string): Promise<WebhookConfiguration | undefined> {
+    return Array.from(this.webhookConfigurations.values())
+      .find(config => config.userId === userId && config.marketplace === marketplace);
+  }
+
+  async createWebhookConfiguration(userId: string, config: InsertWebhookConfiguration): Promise<WebhookConfiguration> {
+    const id = randomUUID();
+    const newConfig: WebhookConfiguration = {
+      ...config,
+      id,
+      userId,
+      isEnabled: true,
+      verificationStatus: "pending",
+      autoRegistered: false,
+      errorCount: 0,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.webhookConfigurations.set(id, newConfig);
+    return newConfig;
+  }
+
+  async updateWebhookConfiguration(id: string, updates: Partial<WebhookConfiguration>): Promise<WebhookConfiguration> {
+    const config = this.webhookConfigurations.get(id);
+    if (!config) throw new Error("Webhook configuration not found");
+    
+    const updatedConfig = { ...config, ...updates, updatedAt: new Date() };
+    this.webhookConfigurations.set(id, updatedConfig);
+    return updatedConfig;
+  }
+
+  async deleteWebhookConfiguration(id: string): Promise<void> {
+    this.webhookConfigurations.delete(id);
+  }
+
+  // Webhook Event methods
+  async getWebhookEvents(userId?: string, filters?: { 
+    marketplace?: string; 
+    eventType?: string; 
+    processingStatus?: string; 
+    startDate?: Date; 
+    endDate?: Date;
+    listingId?: string;
+    limit?: number;
+  }): Promise<WebhookEvent[]> {
+    let events = Array.from(this.webhookEvents.values());
+    
+    if (userId) {
+      events = events.filter(event => event.userId === userId);
+    }
+    if (filters?.marketplace) {
+      events = events.filter(event => event.marketplace === filters.marketplace);
+    }
+    if (filters?.eventType) {
+      events = events.filter(event => event.eventType === filters.eventType);
+    }
+    if (filters?.processingStatus) {
+      events = events.filter(event => event.processingStatus === filters.processingStatus);
+    }
+    if (filters?.listingId) {
+      events = events.filter(event => event.listingId === filters.listingId);
+    }
+    if (filters?.startDate) {
+      events = events.filter(event => event.createdAt >= filters.startDate!);
+    }
+    if (filters?.endDate) {
+      events = events.filter(event => event.createdAt <= filters.endDate!);
+    }
+
+    // Sort by creation date (newest first)
+    events.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    
+    if (filters?.limit) {
+      events = events.slice(0, filters.limit);
+    }
+    
+    return events;
+  }
+
+  async getWebhookEvent(id: string): Promise<WebhookEvent | undefined> {
+    return this.webhookEvents.get(id);
+  }
+
+  async getWebhookEventByExternalId(marketplace: string, eventId: string): Promise<WebhookEvent | undefined> {
+    return Array.from(this.webhookEvents.values())
+      .find(event => event.marketplace === marketplace && event.eventId === eventId);
+  }
+
+  async createWebhookEvent(event: InsertWebhookEvent): Promise<WebhookEvent> {
+    const id = randomUUID();
+    const newEvent: WebhookEvent = {
+      ...event,
+      id,
+      signatureValid: false,
+      processingStatus: "pending",
+      processingAttempts: 0,
+      maxRetries: 3,
+      priority: 5,
+      createdAt: new Date(),
+    };
+    this.webhookEvents.set(id, newEvent);
+    return newEvent;
+  }
+
+  async updateWebhookEvent(id: string, updates: Partial<WebhookEvent>): Promise<WebhookEvent> {
+    const event = this.webhookEvents.get(id);
+    if (!event) throw new Error("Webhook event not found");
+    
+    const updatedEvent = { ...event, ...updates };
+    this.webhookEvents.set(id, updatedEvent);
+    return updatedEvent;
+  }
+
+  async deleteWebhookEvent(id: string): Promise<void> {
+    this.webhookEvents.delete(id);
+  }
+
+  // Webhook Delivery methods
+  async getWebhookDeliveries(webhookConfigId?: string, filters?: { 
+    marketplace?: string; 
+    successful?: boolean; 
+    startDate?: Date; 
+    endDate?: Date;
+    limit?: number;
+  }): Promise<WebhookDelivery[]> {
+    let deliveries = Array.from(this.webhookDeliveries.values());
+    
+    if (webhookConfigId) {
+      deliveries = deliveries.filter(delivery => delivery.webhookConfigId === webhookConfigId);
+    }
+    if (filters?.marketplace) {
+      deliveries = deliveries.filter(delivery => delivery.marketplace === filters.marketplace);
+    }
+    if (filters?.successful !== undefined) {
+      deliveries = deliveries.filter(delivery => delivery.successful === filters.successful);
+    }
+    if (filters?.startDate) {
+      deliveries = deliveries.filter(delivery => delivery.createdAt >= filters.startDate!);
+    }
+    if (filters?.endDate) {
+      deliveries = deliveries.filter(delivery => delivery.createdAt <= filters.endDate!);
+    }
+
+    // Sort by creation date (newest first)
+    deliveries.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    
+    if (filters?.limit) {
+      deliveries = deliveries.slice(0, filters.limit);
+    }
+    
+    return deliveries;
+  }
+
+  async getWebhookDelivery(id: string): Promise<WebhookDelivery | undefined> {
+    return this.webhookDeliveries.get(id);
+  }
+
+  async createWebhookDelivery(delivery: InsertWebhookDelivery): Promise<WebhookDelivery> {
+    const id = randomUUID();
+    const newDelivery: WebhookDelivery = {
+      ...delivery,
+      id,
+      deliveryAttempt: 1,
+      successful: false,
+      retryCount: 0,
+      maxRetries: 5,
+      finalFailure: false,
+      createdAt: new Date(),
+    };
+    this.webhookDeliveries.set(id, newDelivery);
+    return newDelivery;
+  }
+
+  async updateWebhookDelivery(id: string, updates: Partial<WebhookDelivery>): Promise<WebhookDelivery> {
+    const delivery = this.webhookDeliveries.get(id);
+    if (!delivery) throw new Error("Webhook delivery not found");
+    
+    const updatedDelivery = { ...delivery, ...updates };
+    this.webhookDeliveries.set(id, updatedDelivery);
+    return updatedDelivery;
+  }
+
+  // Polling Schedule methods
+  async getPollingSchedules(userId: string, marketplace?: string): Promise<PollingSchedule[]> {
+    let schedules = Array.from(this.pollingSchedules.values()).filter(schedule => schedule.userId === userId);
+    if (marketplace) {
+      schedules = schedules.filter(schedule => schedule.marketplace === marketplace);
+    }
+    return schedules.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getPollingSchedule(userId: string, marketplace: string): Promise<PollingSchedule | undefined> {
+    return Array.from(this.pollingSchedules.values())
+      .find(schedule => schedule.userId === userId && schedule.marketplace === marketplace);
+  }
+
+  async createPollingSchedule(userId: string, schedule: InsertPollingSchedule): Promise<PollingSchedule> {
+    const id = randomUUID();
+    const now = new Date();
+    const newSchedule: PollingSchedule = {
+      ...schedule,
+      id,
+      userId,
+      isEnabled: true,
+      pollingInterval: 300,
+      nextPollAt: new Date(now.getTime() + 300000), // 5 minutes from now
+      consecutiveFailures: 0,
+      maxFailures: 10,
+      adaptivePolling: true,
+      minInterval: 60,
+      maxInterval: 3600,
+      currentInterval: 300,
+      salesDetectedSinceLastPoll: 0,
+      errorCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.pollingSchedules.set(id, newSchedule);
+    return newSchedule;
+  }
+
+  async updatePollingSchedule(id: string, updates: Partial<PollingSchedule>): Promise<PollingSchedule> {
+    const schedule = this.pollingSchedules.get(id);
+    if (!schedule) throw new Error("Polling schedule not found");
+    
+    const updatedSchedule = { ...schedule, ...updates, updatedAt: new Date() };
+    this.pollingSchedules.set(id, updatedSchedule);
+    return updatedSchedule;
+  }
+
+  async deletePollingSchedule(id: string): Promise<void> {
+    this.pollingSchedules.delete(id);
+  }
+
+  async getPollingSchedulesDueForPoll(): Promise<PollingSchedule[]> {
+    const now = new Date();
+    return Array.from(this.pollingSchedules.values())
+      .filter(schedule => 
+        schedule.isEnabled && 
+        schedule.nextPollAt && 
+        schedule.nextPollAt <= now &&
+        schedule.consecutiveFailures < schedule.maxFailures
+      )
+      .sort((a, b) => a.nextPollAt!.getTime() - b.nextPollAt!.getTime());
+  }
+
+  // Webhook Health Metrics methods
+  async getWebhookHealthMetrics(marketplace?: string, timeWindow?: Date): Promise<WebhookHealthMetrics[]> {
+    let metrics = Array.from(this.webhookHealthMetrics.values());
+    
+    if (marketplace) {
+      metrics = metrics.filter(metric => metric.marketplace === marketplace);
+    }
+    if (timeWindow) {
+      metrics = metrics.filter(metric => metric.timeWindow.getTime() === timeWindow.getTime());
+    }
+    
+    return metrics.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async createWebhookHealthMetrics(metrics: InsertWebhookHealthMetrics): Promise<WebhookHealthMetrics> {
+    const id = randomUUID();
+    const newMetrics: WebhookHealthMetrics = {
+      ...metrics,
+      id,
+      totalEvents: 0,
+      successfulEvents: 0,
+      failedEvents: 0,
+      duplicateEvents: 0,
+      averageProcessingTime: "0",
+      maxProcessingTime: 0,
+      minProcessingTime: 0,
+      signatureFailures: 0,
+      rateLimitHits: 0,
+      retryCount: 0,
+      syncJobsTriggered: 0,
+      successfulSyncs: 0,
+      failedSyncs: 0,
+      healthScore: "100",
+      uptime: "100",
+      createdAt: new Date(),
+    };
+    this.webhookHealthMetrics.set(id, newMetrics);
+    return newMetrics;
+  }
+
+  async updateWebhookHealthMetrics(id: string, updates: Partial<WebhookHealthMetrics>): Promise<WebhookHealthMetrics> {
+    const metrics = this.webhookHealthMetrics.get(id);
+    if (!metrics) throw new Error("Webhook health metrics not found");
+    
+    const updatedMetrics = { ...metrics, ...updates };
+    this.webhookHealthMetrics.set(id, updatedMetrics);
+    return updatedMetrics;
+  }
+
+  async getWebhookHealthSummary(marketplace?: string, hours: number = 24): Promise<{
+    totalEvents: number;
+    successRate: number;
+    averageProcessingTime: number;
+    healthScore: number;
+    uptime: number;
+  }> {
+    const startTime = new Date(Date.now() - hours * 60 * 60 * 1000);
+    let metrics = Array.from(this.webhookHealthMetrics.values())
+      .filter(metric => metric.createdAt >= startTime);
+    
+    if (marketplace) {
+      metrics = metrics.filter(metric => metric.marketplace === marketplace);
+    }
+
+    const totalEvents = metrics.reduce((sum, metric) => sum + metric.totalEvents, 0);
+    const successfulEvents = metrics.reduce((sum, metric) => sum + metric.successfulEvents, 0);
+    const failedEvents = metrics.reduce((sum, metric) => sum + metric.failedEvents, 0);
+    
+    const successRate = totalEvents > 0 ? (successfulEvents / totalEvents) * 100 : 100;
+    
+    const avgProcessingTimes = metrics
+      .map(metric => parseFloat(metric.averageProcessingTime.toString()))
+      .filter(time => time > 0);
+    const averageProcessingTime = avgProcessingTimes.length > 0 
+      ? avgProcessingTimes.reduce((sum, time) => sum + time, 0) / avgProcessingTimes.length 
+      : 0;
+    
+    const healthScores = metrics
+      .map(metric => parseFloat(metric.healthScore.toString()))
+      .filter(score => score > 0);
+    const healthScore = healthScores.length > 0 
+      ? healthScores.reduce((sum, score) => sum + score, 0) / healthScores.length 
+      : 100;
+    
+    const uptimes = metrics
+      .map(metric => parseFloat(metric.uptime.toString()));
+    const uptime = uptimes.length > 0 
+      ? uptimes.reduce((sum, uptime) => sum + uptime, 0) / uptimes.length 
+      : 100;
+
+    return {
+      totalEvents,
+      successRate,
+      averageProcessingTime,
+      healthScore,
+      uptime
     };
   }
 }

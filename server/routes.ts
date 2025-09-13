@@ -13,6 +13,7 @@ import { analyticsService } from "./services/analyticsService";
 import { optimizationEngine } from "./services/optimizationEngine";
 import { patternAnalysisService } from "./services/patternAnalysisService";
 import { recommendationService } from "./services/recommendationService";
+import { webhookService } from "./services/webhookService";
 import { requireAuth, optionalAuth, requirePlan } from "./middleware/auth";
 import { insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema, insertSyncSettingsSchema, insertSyncRuleSchema, insertAutoDelistRuleSchema } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, validatePassword, verifyToken } from "./auth";
@@ -1692,6 +1693,278 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const analytics = await storage.getPostingSuccessAnalytics(req.user!.id, filters);
       res.json(analytics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================================================
+  // WEBHOOK ROUTES - Real-time marketplace notifications
+  // ============================================================================
+
+  // Generic webhook endpoint for all marketplaces
+  app.post("/api/webhooks/:marketplace", async (req, res) => {
+    try {
+      const marketplace = req.params.marketplace.toLowerCase();
+      const payload = {
+        headers: req.headers as Record<string, string>,
+        body: req.body,
+        rawBody: req.rawBody || JSON.stringify(req.body),
+        query: req.query as Record<string, string>,
+        ip: req.ip,
+        userAgent: req.get('User-Agent'),
+      };
+
+      console.log(`🔗 Received webhook from ${marketplace}:`, {
+        contentType: req.get('Content-Type'),
+        bodySize: payload.rawBody.length,
+        ip: req.ip,
+        signature: req.get('x-signature') || req.get('signature') || 'none'
+      });
+
+      const result = await webhookService.processWebhook(marketplace, payload);
+
+      // Return appropriate status code
+      res.status(result.statusCode).json({
+        success: result.success,
+        message: result.success ? 'Webhook processed successfully' : result.error,
+        eventId: result.eventId,
+        syncJobId: result.syncJobId,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error: any) {
+      console.error('Webhook endpoint error:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Internal server error',
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // Webhook verification endpoint for marketplace registration
+  app.get("/api/webhooks/:marketplace/verify", async (req, res) => {
+    try {
+      const marketplace = req.params.marketplace.toLowerCase();
+      const challenge = req.query.challenge || req.query['hub.challenge'];
+      
+      console.log(`🔍 Webhook verification request from ${marketplace}:`, {
+        challenge: challenge ? 'present' : 'missing',
+        query: Object.keys(req.query)
+      });
+
+      // Return challenge for verification (common pattern for webhook setup)
+      if (challenge) {
+        res.status(200).send(challenge);
+      } else {
+        res.status(200).json({ 
+          verified: true, 
+          marketplace,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (error: any) {
+      console.error('Webhook verification error:', error);
+      res.status(500).json({ error: 'Verification failed' });
+    }
+  });
+
+  // Test webhook endpoint for development and debugging
+  app.post("/api/webhooks/:marketplace/test", requireAuth, async (req, res) => {
+    try {
+      const marketplace = req.params.marketplace.toLowerCase();
+      const testPayload = req.body;
+
+      console.log(`🧪 Testing webhook for ${marketplace}:`, {
+        userId: req.user!.id,
+        payloadKeys: Object.keys(testPayload)
+      });
+
+      const result = await webhookService.testWebhook(marketplace, testPayload);
+
+      res.json({
+        success: result.success,
+        message: result.success ? 'Test webhook processed successfully' : result.error,
+        eventId: result.eventId,
+        syncJobId: result.syncJobId,
+        processingDetails: result,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error: any) {
+      console.error('Test webhook error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================================================
+  // WEBHOOK MANAGEMENT API - User configuration and monitoring
+  // ============================================================================
+
+  // Get webhook configurations for user
+  app.get("/api/webhooks/configurations", requireAuth, async (req, res) => {
+    try {
+      const configurations = await webhookService.getUserWebhookConfigs(req.user!.id);
+      res.json(configurations);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Register webhook for a marketplace
+  app.post("/api/webhooks/configurations", requireAuth, async (req, res) => {
+    try {
+      const { marketplace, events } = req.body;
+      
+      if (!marketplace || !events || !Array.isArray(events)) {
+        return res.status(400).json({ 
+          error: 'Marketplace and events array are required' 
+        });
+      }
+
+      const configuration = await webhookService.registerWebhook(
+        req.user!.id,
+        marketplace,
+        events
+      );
+
+      res.status(201).json(configuration);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update webhook configuration
+  app.put("/api/webhooks/configurations/:configId", requireAuth, async (req, res) => {
+    try {
+      const { configId } = req.params;
+      const updates = req.body;
+
+      const configuration = await webhookService.updateWebhookConfig(configId, updates);
+      res.json(configuration);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get webhook events (for monitoring and debugging)
+  app.get("/api/webhooks/events", requireAuth, async (req, res) => {
+    try {
+      const filters = {
+        marketplace: req.query.marketplace as string,
+        eventType: req.query.eventType as string,
+        processingStatus: req.query.processingStatus as string,
+        startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
+        endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+        listingId: req.query.listingId as string,
+        limit: req.query.limit ? parseInt(req.query.limit as string) : 50
+      };
+
+      const events = await webhookService.getWebhookEvents(req.user!.id, filters);
+      res.json(events);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get webhook health summary
+  app.get("/api/webhooks/health", requireAuth, async (req, res) => {
+    try {
+      const marketplace = req.query.marketplace as string;
+      const hours = req.query.hours ? parseInt(req.query.hours as string) : 24;
+
+      const healthSummary = await webhookService.getWebhookHealthSummary(marketplace);
+      res.json(healthSummary);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get webhook deliveries (for debugging delivery issues)
+  app.get("/api/webhooks/deliveries", requireAuth, async (req, res) => {
+    try {
+      const filters = {
+        marketplace: req.query.marketplace as string,
+        successful: req.query.successful === 'true' ? true : req.query.successful === 'false' ? false : undefined,
+        startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
+        endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+        limit: req.query.limit ? parseInt(req.query.limit as string) : 50
+      };
+
+      const deliveries = await storage.getWebhookDeliveries(undefined, filters);
+      
+      // Filter by user's webhook configurations
+      const userConfigs = await webhookService.getUserWebhookConfigs(req.user!.id);
+      const userConfigIds = userConfigs.map(config => config.id);
+      
+      const userDeliveries = deliveries.filter(delivery => 
+        userConfigIds.includes(delivery.webhookConfigId)
+      );
+
+      res.json(userDeliveries);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================================================
+  // POLLING SCHEDULES API - Fallback for marketplaces without webhooks
+  // ============================================================================
+
+  // Get polling schedules for user
+  app.get("/api/polling/schedules", requireAuth, async (req, res) => {
+    try {
+      const marketplace = req.query.marketplace as string;
+      const schedules = await storage.getPollingSchedules(req.user!.id, marketplace);
+      res.json(schedules);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create polling schedule for a marketplace
+  app.post("/api/polling/schedules", requireAuth, async (req, res) => {
+    try {
+      const { marketplace, pollingInterval } = req.body;
+      
+      if (!marketplace) {
+        return res.status(400).json({ error: 'Marketplace is required' });
+      }
+
+      const schedule = await storage.createPollingSchedule(req.user!.id, {
+        marketplace,
+        pollingInterval: pollingInterval || 300, // Default 5 minutes
+        lastPollAt: null,
+        lastSaleCount: 0,
+        configurationData: {}
+      });
+
+      res.status(201).json(schedule);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update polling schedule
+  app.put("/api/polling/schedules/:scheduleId", requireAuth, async (req, res) => {
+    try {
+      const { scheduleId } = req.params;
+      const updates = req.body;
+
+      const schedule = await storage.updatePollingSchedule(scheduleId, updates);
+      res.json(schedule);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Delete polling schedule
+  app.delete("/api/polling/schedules/:scheduleId", requireAuth, async (req, res) => {
+    try {
+      const { scheduleId } = req.params;
+      await storage.deletePollingSchedule(scheduleId);
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

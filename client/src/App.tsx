@@ -18,6 +18,7 @@ import Settings from "@/pages/settings";
 import Subscribe from "@/pages/subscribe";
 import Sync from "@/pages/sync";
 import AutoDelist from "@/pages/auto-delist";
+import Webhooks from "@/pages/webhooks";
 import NotFound from "@/pages/not-found";
 import Pricing from "@/pages/pricing";
 
@@ -57,6 +58,7 @@ function Router() {
             <Route path="/marketplaces" component={Marketplaces} />
             <Route path="/sync" component={Sync} />
             <Route path="/auto-delist" component={AutoDelist} />
+            <Route path="/webhooks" component={Webhooks} />
             <Route path="/settings" component={Settings} />
             <Route path="/subscribe" component={Subscribe} />
             <Route component={NotFound} />

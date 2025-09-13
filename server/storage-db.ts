@@ -31,7 +31,14 @@ import {
   bulkUploads, type BulkUpload, type InsertBulkUpload,
   batchTemplates, type BatchTemplate, type InsertBatchTemplate,
   batchAnalytics, type BatchAnalytics, type InsertBatchAnalytics,
-  batchQueue, type BatchQueue, type InsertBatchQueue
+  batchQueue, type BatchQueue, type InsertBatchQueue,
+  crossPlatformSyncJobs, type CrossPlatformSyncJob, type InsertCrossPlatformSyncJob,
+  crossPlatformSyncHistory, type CrossPlatformSyncHistory, type InsertCrossPlatformSyncHistory,
+  webhookConfigurations, type WebhookConfiguration, type InsertWebhookConfiguration,
+  webhookEvents, type WebhookEvent, type InsertWebhookEvent,
+  webhookDeliveries, type WebhookDelivery, type InsertWebhookDelivery,
+  pollingSchedules, type PollingSchedule, type InsertPollingSchedule,
+  webhookHealthMetrics, type WebhookHealthMetrics, type InsertWebhookHealthMetrics
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, gte, lte, isNull, sql } from "drizzle-orm";
@@ -1640,5 +1647,366 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(batchQueue.priority), batchQueue.queuePosition)
       .limit(1);
     return entry || undefined;
+  }
+
+  // Webhook Configuration methods
+  async getWebhookConfigurations(userId: string, marketplace?: string): Promise<WebhookConfiguration[]> {
+    let query = db.select().from(webhookConfigurations).where(eq(webhookConfigurations.userId, userId));
+    if (marketplace) {
+      query = query.where(and(eq(webhookConfigurations.userId, userId), eq(webhookConfigurations.marketplace, marketplace)));
+    }
+    return await query.orderBy(desc(webhookConfigurations.createdAt));
+  }
+
+  async getWebhookConfiguration(userId: string, marketplace: string): Promise<WebhookConfiguration | undefined> {
+    const [config] = await db
+      .select()
+      .from(webhookConfigurations)
+      .where(and(
+        eq(webhookConfigurations.userId, userId),
+        eq(webhookConfigurations.marketplace, marketplace)
+      ));
+    return config || undefined;
+  }
+
+  async createWebhookConfiguration(userId: string, config: InsertWebhookConfiguration): Promise<WebhookConfiguration> {
+    const [newConfig] = await db
+      .insert(webhookConfigurations)
+      .values({
+        ...config,
+        id: randomUUID(),
+        userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newConfig;
+  }
+
+  async updateWebhookConfiguration(id: string, updates: Partial<WebhookConfiguration>): Promise<WebhookConfiguration> {
+    const [config] = await db
+      .update(webhookConfigurations)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(webhookConfigurations.id, id))
+      .returning();
+    if (!config) throw new Error("Webhook configuration not found");
+    return config;
+  }
+
+  async deleteWebhookConfiguration(id: string): Promise<void> {
+    await db.delete(webhookConfigurations).where(eq(webhookConfigurations.id, id));
+  }
+
+  // Webhook Event methods  
+  async getWebhookEvents(userId?: string, filters?: { 
+    marketplace?: string; 
+    eventType?: string; 
+    processingStatus?: string; 
+    startDate?: Date; 
+    endDate?: Date;
+    listingId?: string;
+    limit?: number;
+  }): Promise<WebhookEvent[]> {
+    let query = db.select().from(webhookEvents);
+    const conditions: any[] = [];
+    
+    if (userId) {
+      conditions.push(eq(webhookEvents.userId, userId));
+    }
+    if (filters?.marketplace) {
+      conditions.push(eq(webhookEvents.marketplace, filters.marketplace));
+    }
+    if (filters?.eventType) {
+      conditions.push(eq(webhookEvents.eventType, filters.eventType));
+    }
+    if (filters?.processingStatus) {
+      conditions.push(eq(webhookEvents.processingStatus, filters.processingStatus));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(webhookEvents.createdAt, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(webhookEvents.createdAt, filters.endDate));
+    }
+    if (filters?.listingId) {
+      conditions.push(eq(webhookEvents.listingId, filters.listingId));
+    }
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+    
+    query = query.orderBy(desc(webhookEvents.createdAt));
+    
+    if (filters?.limit) {
+      query = query.limit(filters.limit);
+    }
+    
+    return await query;
+  }
+
+  async getWebhookEvent(id: string): Promise<WebhookEvent | undefined> {
+    const [event] = await db.select().from(webhookEvents).where(eq(webhookEvents.id, id));
+    return event || undefined;
+  }
+
+  async getWebhookEventByExternalId(marketplace: string, eventId: string): Promise<WebhookEvent | undefined> {
+    const [event] = await db
+      .select()
+      .from(webhookEvents)
+      .where(and(
+        eq(webhookEvents.marketplace, marketplace),
+        eq(webhookEvents.eventId, eventId)
+      ));
+    return event || undefined;
+  }
+
+  async createWebhookEvent(event: InsertWebhookEvent): Promise<WebhookEvent> {
+    const [newEvent] = await db
+      .insert(webhookEvents)
+      .values({
+        ...event,
+        id: randomUUID(),
+        createdAt: new Date(),
+      })
+      .returning();
+    return newEvent;
+  }
+
+  async updateWebhookEvent(id: string, updates: Partial<WebhookEvent>): Promise<WebhookEvent> {
+    const [event] = await db
+      .update(webhookEvents)
+      .set(updates)
+      .where(eq(webhookEvents.id, id))
+      .returning();
+    if (!event) throw new Error("Webhook event not found");
+    return event;
+  }
+
+  async deleteWebhookEvent(id: string): Promise<void> {
+    await db.delete(webhookEvents).where(eq(webhookEvents.id, id));
+  }
+
+  // Webhook Delivery methods
+  async getWebhookDeliveries(configId?: string, filters?: { 
+    marketplace?: string; 
+    successful?: boolean; 
+    startDate?: Date; 
+    endDate?: Date; 
+    limit?: number;
+  }): Promise<WebhookDelivery[]> {
+    let query = db.select().from(webhookDeliveries);
+    const conditions: any[] = [];
+    
+    if (configId) {
+      conditions.push(eq(webhookDeliveries.webhookConfigId, configId));
+    }
+    if (filters?.marketplace) {
+      conditions.push(eq(webhookDeliveries.marketplace, filters.marketplace));
+    }
+    if (filters?.successful !== undefined) {
+      conditions.push(eq(webhookDeliveries.successful, filters.successful));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(webhookDeliveries.createdAt, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(webhookDeliveries.createdAt, filters.endDate));
+    }
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+    
+    query = query.orderBy(desc(webhookDeliveries.createdAt));
+    
+    if (filters?.limit) {
+      query = query.limit(filters.limit);
+    }
+    
+    return await query;
+  }
+
+  async getWebhookDelivery(id: string): Promise<WebhookDelivery | undefined> {
+    const [delivery] = await db.select().from(webhookDeliveries).where(eq(webhookDeliveries.id, id));
+    return delivery || undefined;
+  }
+
+  async createWebhookDelivery(delivery: InsertWebhookDelivery): Promise<WebhookDelivery> {
+    const [newDelivery] = await db
+      .insert(webhookDeliveries)
+      .values({
+        ...delivery,
+        id: randomUUID(),
+        createdAt: new Date(),
+      })
+      .returning();
+    return newDelivery;
+  }
+
+  async updateWebhookDelivery(id: string, updates: Partial<WebhookDelivery>): Promise<WebhookDelivery> {
+    const [delivery] = await db
+      .update(webhookDeliveries)
+      .set(updates)
+      .where(eq(webhookDeliveries.id, id))
+      .returning();
+    if (!delivery) throw new Error("Webhook delivery not found");
+    return delivery;
+  }
+
+  // Polling Schedule methods
+  async getPollingSchedules(userId: string, marketplace?: string): Promise<PollingSchedule[]> {
+    let query = db.select().from(pollingSchedules).where(eq(pollingSchedules.userId, userId));
+    if (marketplace) {
+      query = query.where(and(eq(pollingSchedules.userId, userId), eq(pollingSchedules.marketplace, marketplace)));
+    }
+    return await query.orderBy(desc(pollingSchedules.createdAt));
+  }
+
+  async getPollingSchedule(userId: string, marketplace: string): Promise<PollingSchedule | undefined> {
+    const [schedule] = await db
+      .select()
+      .from(pollingSchedules)
+      .where(and(
+        eq(pollingSchedules.userId, userId),
+        eq(pollingSchedules.marketplace, marketplace)
+      ));
+    return schedule || undefined;
+  }
+
+  async createPollingSchedule(userId: string, schedule: InsertPollingSchedule): Promise<PollingSchedule> {
+    const [newSchedule] = await db
+      .insert(pollingSchedules)
+      .values({
+        ...schedule,
+        id: randomUUID(),
+        userId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newSchedule;
+  }
+
+  async updatePollingSchedule(id: string, updates: Partial<PollingSchedule>): Promise<PollingSchedule> {
+    const [schedule] = await db
+      .update(pollingSchedules)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(pollingSchedules.id, id))
+      .returning();
+    if (!schedule) throw new Error("Polling schedule not found");
+    return schedule;
+  }
+
+  async deletePollingSchedule(id: string): Promise<void> {
+    await db.delete(pollingSchedules).where(eq(pollingSchedules.id, id));
+  }
+
+  async getPollingSchedulesDueForPoll(): Promise<PollingSchedule[]> {
+    const now = new Date();
+    return await db
+      .select()
+      .from(pollingSchedules)
+      .where(and(
+        eq(pollingSchedules.isEnabled, true),
+        lte(pollingSchedules.nextPollAt, now)
+      ))
+      .orderBy(pollingSchedules.nextPollAt);
+  }
+
+  // Webhook Health Metrics methods
+  async getWebhookHealthMetrics(marketplace?: string, timeWindow?: Date): Promise<WebhookHealthMetrics[]> {
+    let query = db.select().from(webhookHealthMetrics);
+    const conditions: any[] = [];
+    
+    if (marketplace) {
+      conditions.push(eq(webhookHealthMetrics.marketplace, marketplace));
+    }
+    if (timeWindow) {
+      conditions.push(eq(webhookHealthMetrics.timeWindow, timeWindow));
+    }
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+    
+    return await query.orderBy(desc(webhookHealthMetrics.createdAt));
+  }
+
+  async createWebhookHealthMetrics(metrics: InsertWebhookHealthMetrics): Promise<WebhookHealthMetrics> {
+    const [newMetrics] = await db
+      .insert(webhookHealthMetrics)
+      .values({
+        ...metrics,
+        id: randomUUID(),
+        createdAt: new Date(),
+      })
+      .returning();
+    return newMetrics;
+  }
+
+  async updateWebhookHealthMetrics(id: string, updates: Partial<WebhookHealthMetrics>): Promise<WebhookHealthMetrics> {
+    const [metrics] = await db
+      .update(webhookHealthMetrics)
+      .set(updates)
+      .where(eq(webhookHealthMetrics.id, id))
+      .returning();
+    if (!metrics) throw new Error("Webhook health metrics not found");
+    return metrics;
+  }
+
+  async getWebhookHealthSummary(marketplace?: string, hours: number = 24): Promise<{
+    totalEvents: number;
+    successRate: number;
+    averageProcessingTime: number;
+    healthScore: number;
+    uptime: number;
+  }> {
+    const startTime = new Date(Date.now() - hours * 60 * 60 * 1000);
+    let query = db.select().from(webhookHealthMetrics)
+      .where(gte(webhookHealthMetrics.createdAt, startTime));
+    
+    if (marketplace) {
+      query = query.where(and(
+        gte(webhookHealthMetrics.createdAt, startTime),
+        eq(webhookHealthMetrics.marketplace, marketplace)
+      ));
+    }
+    
+    const metrics = await query;
+    
+    const totalEvents = metrics.reduce((sum, metric) => sum + metric.totalEvents, 0);
+    const successfulEvents = metrics.reduce((sum, metric) => sum + metric.successfulEvents, 0);
+    const failedEvents = metrics.reduce((sum, metric) => sum + metric.failedEvents, 0);
+    
+    const successRate = totalEvents > 0 ? (successfulEvents / totalEvents) * 100 : 100;
+    
+    const avgProcessingTimes = metrics
+      .map(metric => parseFloat(metric.averageProcessingTime.toString()))
+      .filter(time => time > 0);
+    const averageProcessingTime = avgProcessingTimes.length > 0 
+      ? avgProcessingTimes.reduce((sum, time) => sum + time, 0) / avgProcessingTimes.length 
+      : 0;
+    
+    const healthScores = metrics
+      .map(metric => parseFloat(metric.healthScore.toString()))
+      .filter(score => score > 0);
+    const healthScore = healthScores.length > 0 
+      ? healthScores.reduce((sum, score) => sum + score, 0) / healthScores.length 
+      : 100;
+    
+    const uptimes = metrics
+      .map(metric => parseFloat(metric.uptime.toString()));
+    const uptime = uptimes.length > 0 
+      ? uptimes.reduce((sum, uptime) => sum + uptime, 0) / uptimes.length 
+      : 100;
+
+    return {
+      totalEvents,
+      successRate,
+      averageProcessingTime,
+      healthScore,
+      uptime
+    };
   }
 }
