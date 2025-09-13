@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { type User } from "@shared/schema";
+import { verifyToken } from "../auth";
 
 declare global {
   namespace Express {
@@ -11,17 +12,22 @@ declare global {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const userId = req.headers.authorization?.replace("Bearer ", "");
+  const token = req.headers.authorization?.replace("Bearer ", "");
   
-  if (!userId) {
+  if (!token) {
     return res.status(401).json({ error: "Authentication required" });
   }
 
-  // In a real implementation, you would verify a JWT token here
-  // For now, we'll just use the user ID directly
-  storage.getUser(userId).then(user => {
+  // Verify JWT token
+  const decoded = verifyToken(token);
+  if (!decoded) {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+
+  // Get user from database to ensure they still exist
+  storage.getUser(decoded.userId).then(user => {
     if (!user) {
-      return res.status(401).json({ error: "Invalid authentication" });
+      return res.status(401).json({ error: "User not found" });
     }
     req.user = user;
     next();
@@ -31,17 +37,23 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 export function optionalAuth(req: Request, res: Response, next: NextFunction) {
-  const userId = req.headers.authorization?.replace("Bearer ", "");
+  const token = req.headers.authorization?.replace("Bearer ", "");
   
-  if (userId) {
-    storage.getUser(userId).then(user => {
-      if (user) {
-        req.user = user;
-      }
+  if (token) {
+    // Verify JWT token
+    const decoded = verifyToken(token);
+    if (decoded) {
+      storage.getUser(decoded.userId).then(user => {
+        if (user) {
+          req.user = user;
+        }
+        next();
+      }).catch(() => {
+        next();
+      });
+    } else {
       next();
-    }).catch(() => {
-      next();
-    });
+    }
   } else {
     next();
   }
