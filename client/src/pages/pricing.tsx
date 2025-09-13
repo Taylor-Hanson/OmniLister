@@ -1,9 +1,15 @@
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, X, Zap, TrendingUp, Crown, Rocket, Gift } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Check, X, Zap, TrendingUp, Crown, Rocket, Gift, Mail, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PRICING_PLANS = [
@@ -138,7 +144,47 @@ const FEATURE_COMPARISON = [
 ];
 
 export default function Pricing() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const [showContactDialog, setShowContactDialog] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+
+  const selectPlanMutation = useMutation({
+    mutationFn: async (plan: string) => {
+      const response = await apiRequest("POST", "/api/subscription/select-plan", { plan });
+      return response.json();
+    },
+    onSuccess: async (data, planId) => {
+      if (data.success) {
+        toast({
+          title: "Plan Activated!",
+          description: data.message,
+        });
+        await refreshUser();
+        setLocation("/");
+      } else if (data.requiresPayment) {
+        setSelectedPlan(planId);
+        setShowContactDialog(true);
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to select plan",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSelectPlan = (planId: string) => {
+    if (planId === 'free') {
+      selectPlanMutation.mutate(planId);
+    } else {
+      setSelectedPlan(planId);
+      setShowContactDialog(true);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
@@ -156,6 +202,15 @@ export default function Pricing() {
             Start free forever, upgrade anytime. No credit card required for free plan.
           </p>
         </div>
+
+        {/* Coming Soon Alert */}
+        <Alert className="mb-8 max-w-4xl mx-auto">
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Limited Time Offer:</strong> Start with our free plan and get 10 listings per month forever! 
+            Paid plans with automatic billing are coming soon. Contact sales for early access to paid plans.
+          </AlertDescription>
+        </Alert>
 
         {/* Pricing Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-16">
@@ -213,6 +268,35 @@ export default function Pricing() {
                   <Button className="w-full" disabled>
                     Current Plan
                   </Button>
+                ) : user ? (
+                  plan.id === 'free' ? (
+                    <Button
+                      className="w-full"
+                      variant={plan.buttonVariant}
+                      onClick={() => handleSelectPlan(plan.id)}
+                      disabled={selectPlanMutation.isPending}
+                      data-testid={`button-select-${plan.id}`}
+                    >
+                      {selectPlanMutation.isPending && selectedPlan === plan.id ? (
+                        <>
+                          <i className="fas fa-spinner fa-spin mr-2"></i>
+                          Activating...
+                        </>
+                      ) : (
+                        plan.buttonText
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full"
+                      variant={plan.buttonVariant}
+                      onClick={() => handleSelectPlan(plan.id)}
+                      data-testid={`button-select-${plan.id}`}
+                    >
+                      <Mail className="w-4 h-4 mr-2" />
+                      Contact Sales
+                    </Button>
+                  )
                 ) : (
                   <Button
                     className="w-full"
@@ -220,11 +304,7 @@ export default function Pricing() {
                     asChild
                     data-testid={`button-select-${plan.id}`}
                   >
-                    {user ? (
-                      <Link href="/subscribe">{plan.buttonText}</Link>
-                    ) : (
-                      <Link href="/signup">{plan.buttonText}</Link>
-                    )}
+                    <Link href="/signup">{plan.buttonText}</Link>
                   </Button>
                 )}
               </CardFooter>
@@ -334,6 +414,64 @@ export default function Pricing() {
           </Card>
         </div>
       </div>
+
+      {/* Contact Sales Dialog */}
+      <Dialog open={showContactDialog} onOpenChange={setShowContactDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Get Early Access to Paid Plans</DialogTitle>
+            <DialogDescription>
+              Paid plans with automatic billing are coming soon! Get early access by contacting our sales team.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {selectedPlan && (
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="font-medium">
+                        {PRICING_PLANS.find(p => p.id === selectedPlan)?.name} Plan
+                      </span>
+                      <span className="font-bold">
+                        {PRICING_PLANS.find(p => p.id === selectedPlan)?.price}/month
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {PRICING_PLANS.find(p => p.id === selectedPlan)?.listings} per month
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            <Alert>
+              <Mail className="h-4 w-4" />
+              <AlertDescription>
+                Contact us at <a href="mailto:sales@crosslist.com" className="font-medium underline">sales@crosslist.com</a> to get early access to paid plans with special introductory pricing.
+              </AlertDescription>
+            </Alert>
+            
+            <div className="flex gap-2">
+              <Button 
+                className="flex-1"
+                onClick={() => window.location.href = 'mailto:sales@crosslist.com'}
+                data-testid="button-email-sales"
+              >
+                <Mail className="w-4 h-4 mr-2" />
+                Email Sales
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowContactDialog(false)}
+                data-testid="button-close-dialog"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

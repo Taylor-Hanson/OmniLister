@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,9 +14,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { RotateCw, GraduationCap } from "lucide-react";
+import { RotateCw, GraduationCap, Crown, Mail, Info, CheckCircle, TrendingUp, Zap, Gift } from "lucide-react";
 import { Link } from "wouter";
 
 const profileSchema = z.object({
@@ -368,117 +369,227 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="billing" className="space-y-6">
+          {/* Current Plan Card */}
           <Card>
             <CardHeader>
               <CardTitle>Subscription Plan</CardTitle>
+              <CardDescription>
+                Manage your subscription plan and billing information
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium capitalize text-lg">{user?.plan || "free"} Plan</p>
+                  <p className="text-sm text-muted-foreground">
+                    {user?.plan === "free" ? "Forever free plan" : "Active subscription"}
+                  </p>
+                </div>
+                <Badge variant="default" className="flex items-center">
+                  {user?.plan === 'free' ? (
+                    <><Gift className="w-3 h-3 mr-1" /> Free</>
+                  ) : user?.plan === 'starter' ? (
+                    <><Zap className="w-3 h-3 mr-1" /> Starter</>
+                  ) : user?.plan === 'growth' ? (
+                    <><TrendingUp className="w-3 h-3 mr-1" /> Growth</>
+                  ) : user?.plan === 'professional' ? (
+                    <><Crown className="w-3 h-3 mr-1" /> Professional</>
+                  ) : (
+                    <><CheckCircle className="w-3 h-3 mr-1" /> {user?.plan}</>
+                  )}
+                </Badge>
+              </div>
+
+              {/* Usage Progress */}
+              <div className="border rounded-lg p-4 bg-muted/50">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium">Monthly Listing Credits</span>
+                  <span className="text-sm text-muted-foreground">
+                    {user?.listingsUsedThisMonth || 0} / {user?.listingCredits || 10} used
+                  </span>
+                </div>
+                <Progress 
+                  value={((user?.listingsUsedThisMonth || 0) / (user?.listingCredits || 10)) * 100} 
+                  className="h-2"
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  {user?.listingCredits === null ? "Unlimited listings" : 
+                   user?.listingCredits === (user?.listingsUsedThisMonth || 0) ? 
+                   "Monthly limit reached - upgrade to list more" : 
+                   `${(user?.listingCredits || 10) - (user?.listingsUsedThisMonth || 0)} listings remaining this month`}
+                </p>
+              </div>
+
+              {/* Plan Features */}
+              <div className="border rounded-lg p-4">
+                <h4 className="font-medium mb-2 flex items-center">
+                  <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
+                  Your Plan Includes:
+                </h4>
+                <ul className="space-y-1 text-sm text-muted-foreground">
+                  {user?.plan === "free" ? (
+                    <>
+                      <li>• 10 new listings per month</li>
+                      <li>• Access to all 12 marketplaces</li>
+                      <li>• Basic analytics</li>
+                      <li>• Forever free - no expiration</li>
+                    </>
+                  ) : user?.plan === "starter" ? (
+                    <>
+                      <li>• 50 new listings per month</li>
+                      <li>• Unlimited crossposting</li>
+                      <li>• AI listing assistance</li>
+                      <li>• Email support</li>
+                    </>
+                  ) : user?.plan === "growth" ? (
+                    <>
+                      <li>• 300 new listings per month</li>
+                      <li>• Full automation suite</li>
+                      <li>• Advanced analytics</li>
+                      <li>• Priority support</li>
+                    </>
+                  ) : user?.plan === "professional" ? (
+                    <>
+                      <li>• 1,000 new listings per month</li>
+                      <li>• Poshmark automation</li>
+                      <li>• API access</li>
+                      <li>• 24/7 priority support</li>
+                    </>
+                  ) : user?.plan === "unlimited" ? (
+                    <>
+                      <li>• Unlimited new listings</li>
+                      <li>• AI-powered listing creation</li>
+                      <li>• Automatic price sync</li>
+                      <li>• 24/7 VIP support</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>• 10 new listings per month</li>
+                      <li>• Access to all 12 marketplaces</li>
+                      <li>• Basic analytics</li>
+                      <li>• Forever free - no expiration</li>
+                    </>
+                  )}
+                </ul>
+              </div>
+
+              {/* Billing Info */}
+              {user?.billingCycleStart && (
+                <div className="border rounded-lg p-4">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Billing Period</p>
+                      <p className="font-medium">{user?.plan === 'free' ? 'Forever Free' : 'Monthly'}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Next Reset</p>
+                      <p className="font-medium">
+                        {new Date(new Date(user.billingCycleStart).setMonth(new Date(user.billingCycleStart).getMonth() + 1)).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Coming Soon Alert for Payment */}
+              {user?.plan === "free" ? (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    Upgrade to unlock more listings, automation features, and priority support. Paid plans with automatic billing coming soon!
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Alert>
+                  <CheckCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    You're on an early access program. Automatic billing will be set up when available.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="flex gap-2">
+                <Button asChild data-testid="button-view-pricing">
+                  <Link href="/pricing">
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    View All Plans
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild data-testid="button-manage-subscription">
+                  <Link href="/subscribe">Manage Plan</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Payment & Billing Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment & Billing</CardTitle>
+              <CardDescription>
+                Manage your payment methods and billing information
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium capitalize text-lg">{user?.plan || "free"} Plan</p>
-                    <p className="text-sm text-muted-foreground">
-                      {user?.subscriptionStatus === "active" ? "Active subscription" : 
-                       user?.plan === "free" ? "Forever free plan" : "No active subscription"}
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    {user?.plan === 'free' 
+                      ? 'No payment method required for the free plan. Automatic billing will be available when you upgrade.'
+                      : 'Payment processing is being set up. Your plan is active through our early access program.'}
+                  </AlertDescription>
+                </Alert>
+                
+                {user?.plan !== 'free' ? (
+                  <div className="p-4 border rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">Early Access Program</p>
+                        <p className="text-sm text-muted-foreground">No payment method on file</p>
+                      </div>
+                      <Badge variant="outline">
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Active
+                      </Badge>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 border rounded-lg bg-muted/50">
+                    <h4 className="font-medium mb-2">Coming Soon: Automatic Billing</h4>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      We're currently setting up automatic billing with Stripe. For now, contact our sales team for paid plan access.
                     </p>
-                  </div>
-                  <Badge variant={user?.subscriptionStatus === "active" || user?.plan === "free" ? "default" : "secondary"}>
-                    {user?.plan === "free" ? "Active" : (user?.subscriptionStatus || "Inactive")}
-                  </Badge>
-                </div>
-
-                {/* Listing Usage */}
-                <div className="border rounded-lg p-4 bg-muted/50">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-medium">Monthly Listing Credits</span>
-                    <span className="text-sm text-muted-foreground">
-                      {user?.listingsUsedThisMonth || 0} / {user?.listingCredits || 10} used
-                    </span>
-                  </div>
-                  <div className="w-full bg-secondary rounded-full h-2">
-                    <div 
-                      className="bg-primary h-2 rounded-full transition-all"
-                      style={{width: `${((user?.listingsUsedThisMonth || 0) / (user?.listingCredits || 10)) * 100}%`}}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {user?.listingCredits === null ? "Unlimited listings" : 
-                     user?.listingCredits === (user?.listingsUsedThisMonth || 0) ? 
-                     "Monthly limit reached - upgrade to list more" : 
-                     `${(user?.listingCredits || 10) - (user?.listingsUsedThisMonth || 0)} listings remaining this month`}
-                  </p>
-                </div>
-
-                {/* Plan Details */}
-                <div className="border rounded-lg p-4">
-                  <h4 className="font-medium mb-2">Your Plan Includes:</h4>
-                  <ul className="space-y-1 text-sm text-muted-foreground">
-                    {user?.plan === "free" && (
-                      <>
-                        <li>• 10 new listings per month</li>
-                        <li>• Access to all 12 marketplaces</li>
-                        <li>• Basic analytics</li>
-                        <li>• Forever free - no expiration</li>
-                      </>
-                    )}
-                    {user?.plan === "starter" && (
-                      <>
-                        <li>• 50 new listings per month</li>
-                        <li>• Unlimited crossposting</li>
-                        <li>• AI listing assistance</li>
-                        <li>• Email support</li>
-                      </>
-                    )}
-                    {user?.plan === "growth" && (
-                      <>
-                        <li>• 300 new listings per month</li>
-                        <li>• Full automation suite</li>
-                        <li>• Advanced analytics</li>
-                        <li>• Priority support</li>
-                      </>
-                    )}
-                    {user?.plan === "professional" && (
-                      <>
-                        <li>• 1,000 new listings per month</li>
-                        <li>• Poshmark automation</li>
-                        <li>• API access</li>
-                        <li>• 24/7 priority support</li>
-                      </>
-                    )}
-                    {user?.plan === "unlimited" && (
-                      <>
-                        <li>• Unlimited new listings</li>
-                        <li>• AI-powered listing creation</li>
-                        <li>• Automatic price sync</li>
-                        <li>• 24/7 VIP support</li>
-                      </>
-                    )}
-                  </ul>
-                </div>
-
-                {/* Billing Cycle */}
-                {user?.billingCycleStart && (
-                  <div className="text-sm text-muted-foreground">
-                    <p>Next renewal: {new Date(new Date(user.billingCycleStart).setMonth(new Date(user.billingCycleStart).getMonth() + 1)).toLocaleDateString()}</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => window.location.href = 'mailto:sales@crosslist.com'}
+                      data-testid="button-contact-sales"
+                    >
+                      <Mail className="w-4 h-4 mr-2" />
+                      Contact Sales
+                    </Button>
                   </div>
                 )}
+              </div>
+            </CardContent>
+          </Card>
 
-                {user?.plan === "free" && (
-                  <Alert>
-                    <AlertDescription>
-                      Upgrade to unlock more listings, automation features, and priority support.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="flex gap-2">
-                  <Button asChild data-testid="button-view-pricing">
-                    <Link href="/pricing">View All Plans</Link>
-                  </Button>
-                  <Button variant="outline" asChild data-testid="button-manage-subscription">
-                    <Link href="/subscribe">Manage Subscription</Link>
-                  </Button>
-                </div>
+          {/* Billing History Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Billing History</CardTitle>
+              <CardDescription>
+                View your past invoices and transactions
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-8">
+                <p className="text-sm text-muted-foreground">
+                  {user?.plan === 'free' 
+                    ? 'No billing history for free plan' 
+                    : 'Billing history will appear here once payment processing is enabled'}
+                </p>
               </div>
             </CardContent>
           </Card>
