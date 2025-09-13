@@ -10,7 +10,8 @@ import {
   type SyncHistory, type InsertSyncHistory,
   type SyncConflict, type InsertSyncConflict,
   type AutoDelistRule, type InsertAutoDelistRule,
-  type AutoDelistHistory, type InsertAutoDelistHistory
+  type AutoDelistHistory, type InsertAutoDelistHistory,
+  type OnboardingProgress, type InsertOnboardingProgress
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -93,6 +94,14 @@ export interface IStorage {
   // Auto-Delist History methods
   getAutoDelistHistory(userId: string, limit?: number): Promise<AutoDelistHistory[]>;
   createAutoDelistHistory(userId: string, history: InsertAutoDelistHistory): Promise<AutoDelistHistory>;
+
+  // Onboarding methods
+  getOnboardingProgress(userId: string): Promise<OnboardingProgress | undefined>;
+  createOnboardingProgress(userId: string, progress: InsertOnboardingProgress): Promise<OnboardingProgress>;
+  updateOnboardingProgress(userId: string, updates: Partial<OnboardingProgress>): Promise<OnboardingProgress>;
+  completeOnboarding(userId: string): Promise<OnboardingProgress>;
+  skipOnboarding(userId: string): Promise<OnboardingProgress>;
+  resetOnboarding(userId: string): Promise<OnboardingProgress>;
 }
 
 export class MemStorage implements IStorage {
@@ -108,6 +117,7 @@ export class MemStorage implements IStorage {
   private syncConflicts: Map<string, SyncConflict> = new Map();
   private autoDelistRules: Map<string, AutoDelistRule> = new Map();
   private autoDelistHistory: Map<string, AutoDelistHistory> = new Map();
+  private onboardingProgress: Map<string, OnboardingProgress> = new Map();
 
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
@@ -130,6 +140,7 @@ export class MemStorage implements IStorage {
       stripeCustomerId: null,
       stripeSubscriptionId: null,
       subscriptionStatus: "inactive",
+      onboardingCompleted: false,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -549,6 +560,88 @@ export class MemStorage implements IStorage {
     };
     this.autoDelistHistory.set(id, history);
     return history;
+  }
+
+  // Onboarding methods
+  async getOnboardingProgress(userId: string): Promise<OnboardingProgress | undefined> {
+    return Array.from(this.onboardingProgress.values()).find(progress => progress.userId === userId);
+  }
+
+  async createOnboardingProgress(userId: string, progress: InsertOnboardingProgress): Promise<OnboardingProgress> {
+    const id = randomUUID();
+    const newProgress: OnboardingProgress = {
+      ...progress,
+      id,
+      userId,
+      completedAt: null,
+      startedAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.onboardingProgress.set(id, newProgress);
+    return newProgress;
+  }
+
+  async updateOnboardingProgress(userId: string, updates: Partial<OnboardingProgress>): Promise<OnboardingProgress> {
+    const progress = await this.getOnboardingProgress(userId);
+    if (!progress) {
+      // Create new progress if doesn't exist
+      return this.createOnboardingProgress(userId, {
+        currentStep: updates.currentStep || 0,
+        completedSteps: updates.completedSteps || [],
+        skipped: updates.skipped || false,
+      });
+    }
+    
+    const updatedProgress = { ...progress, ...updates, updatedAt: new Date() };
+    this.onboardingProgress.set(progress.id, updatedProgress);
+    return updatedProgress;
+  }
+
+  async completeOnboarding(userId: string): Promise<OnboardingProgress> {
+    const progress = await this.updateOnboardingProgress(userId, {
+      completedAt: new Date(),
+    });
+    
+    // Also update user's onboardingCompleted flag
+    const user = await this.getUser(userId);
+    if (user) {
+      await this.updateUser(userId, { onboardingCompleted: true });
+    }
+    
+    return progress;
+  }
+
+  async skipOnboarding(userId: string): Promise<OnboardingProgress> {
+    const progress = await this.updateOnboardingProgress(userId, {
+      skipped: true,
+      completedAt: new Date(),
+    });
+    
+    // Also update user's onboardingCompleted flag
+    const user = await this.getUser(userId);
+    if (user) {
+      await this.updateUser(userId, { onboardingCompleted: true });
+    }
+    
+    return progress;
+  }
+
+  async resetOnboarding(userId: string): Promise<OnboardingProgress> {
+    const progress = await this.updateOnboardingProgress(userId, {
+      currentStep: 0,
+      completedSteps: [],
+      skipped: false,
+      completedAt: null,
+      startedAt: new Date(),
+    });
+    
+    // Also reset user's onboardingCompleted flag
+    const user = await this.getUser(userId);
+    if (user) {
+      await this.updateUser(userId, { onboardingCompleted: false });
+    }
+    
+    return progress;
   }
 }
 
