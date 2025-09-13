@@ -10,6 +10,7 @@ import {
 import { storage } from "../storage";
 import { marketplaces } from "@shared/marketplaceConfig";
 import { randomUUID } from "crypto";
+import { rateLimitService, type RateLimitStatus } from "./rateLimitService";
 
 interface OptimalWindow {
   dayOfWeek: number; // 0 = Sunday, 6 = Saturday
@@ -84,11 +85,11 @@ export class SmartScheduler {
   async scheduleJobs(context: SchedulingContext): Promise<SmartScheduleResult> {
     const { user, listing, requestedMarketplaces, requestedTime, priority } = context;
     
-    // Get marketplace posting rules and user success data
-    const [postingRules, userAnalytics, rateLimits] = await Promise.all([
+    // Get marketplace posting rules, user analytics, and rate limits
+    const [postingRules, userAnalytics, rateLimitStatuses] = await Promise.all([
       this.getMarketplacePostingRules(requestedMarketplaces),
       this.getUserSuccessAnalytics(user.id, requestedMarketplaces),
-      this.getRateLimitStatus(requestedMarketplaces),
+      this.getRateLimitStatuses(requestedMarketplaces),
     ]);
 
     // Determine optimal time windows for each marketplace
@@ -100,10 +101,10 @@ export class SmartScheduler {
       listing.category
     );
 
-    // Apply smart distribution strategy
+    // Apply smart distribution strategy with rate limit awareness
     const scheduledJobs = await this.distributeAcrossTimeSlots(
       optimalWindows,
-      rateLimits,
+      rateLimitStatuses,
       requestedTime,
       priority
     );
@@ -154,22 +155,42 @@ export class SmartScheduler {
   }
 
   /**
-   * Get current rate limit status for marketplaces
+   * Get current rate limit status for marketplaces using the rate limit service
    */
-  private async getRateLimitStatus(marketplaceIds: string[]): Promise<Record<string, RateLimitTracker | null>> {
-    const rateLimits: Record<string, RateLimitTracker | null> = {};
+  private async getRateLimitStatuses(marketplaceIds: string[]): Promise<Record<string, RateLimitStatus>> {
+    const rateLimitStatuses: Record<string, RateLimitStatus> = {};
     
-    for (const marketplace of marketplaceIds) {
-      try {
-        // In production, this would fetch current rate limit status
-        rateLimits[marketplace] = null; // Will use default limits
-      } catch (error) {
-        console.warn(`Failed to fetch rate limits for ${marketplace}:`, error);
-        rateLimits[marketplace] = null;
-      }
-    }
+    await Promise.all(
+      marketplaceIds.map(async (marketplace) => {
+        try {
+          rateLimitStatuses[marketplace] = await rateLimitService.getRateLimitStatus(marketplace);
+        } catch (error) {
+          console.warn(`Failed to get rate limit status for ${marketplace}:`, error);
+          // Create a fallback status
+          rateLimitStatuses[marketplace] = {
+            marketplace,
+            hourlyUsage: 0,
+            dailyUsage: 0,
+            minuteUsage: 0,
+            hourlyRemaining: 100,
+            dailyRemaining: 1000,
+            minuteRemaining: 10,
+            isLimited: false,
+            resetTimes: {
+              hourly: new Date(Date.now() + 3600000),
+              daily: new Date(Date.now() + 86400000),
+              minute: new Date(Date.now() + 60000),
+            },
+            nextAvailableSlot: new Date(),
+            estimatedDelay: 0,
+            canMakeRequest: true,
+            backoffMultiplier: 1.0,
+          };
+        }
+      })
+    );
     
-    return rateLimits;
+    return rateLimitStatuses;
   }
 
   /**

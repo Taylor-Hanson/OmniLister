@@ -149,10 +149,14 @@ export interface IStorage {
   updatePostingSuccessAnalytics(id: string, updates: Partial<PostingSuccessAnalytics>): Promise<PostingSuccessAnalytics>;
   
   // Rate Limit Tracker methods
-  getRateLimitTracker(marketplace: string, windowType: string): Promise<RateLimitTracker | undefined>;
+  getRateLimitTracker(marketplace: string, windowType?: string): Promise<RateLimitTracker | undefined>;
   createRateLimitTracker(tracker: InsertRateLimitTracker): Promise<RateLimitTracker>;
-  updateRateLimitTracker(id: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker>;
+  updateRateLimitTracker(marketplace: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker>;
+  updateRateLimitTrackerById(id: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker>;
   getCurrentRateLimits(marketplaces: string[]): Promise<Record<string, RateLimitTracker | null>>;
+  getRateLimitUsageInWindow(marketplace: string, startTime: Date, endTime: Date): Promise<number>;
+  getAllRateLimitTrackers(marketplace?: string): Promise<RateLimitTracker[]>;
+  cleanupOldRateLimitTrackers(olderThan: Date): Promise<number>;
   
   // Queue Distribution methods
   getQueueDistribution(timeSlot: Date, marketplace?: string): Promise<QueueDistribution[]>;

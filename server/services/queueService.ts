@@ -7,6 +7,8 @@ import { circuitBreakerService } from "./circuitBreakerService";
 import { deadLetterQueueService } from "./deadLetterQueueService";
 import { failureCategorizationService } from "./failureCategorizationService";
 import { retryMetricsService } from "./retryMetricsService";
+import { rateLimitService } from "./rateLimitService";
+import { rateLimitMiddleware, RateLimitError } from "./rateLimitMiddleware";
 
 export interface JobProcessor {
   process(job: Job): Promise<void>;
@@ -36,6 +38,33 @@ class PostListingProcessor implements JobProcessor {
           continue;
         }
 
+        // Check rate limits before proceeding
+        const rateLimitCheck = await rateLimitService.checkRateLimit(marketplace, listing.userId);
+        if (!rateLimitCheck.allowed) {
+          // Reschedule job for later if rate limited
+          const rescheduleTime = new Date(Date.now() + (rateLimitCheck.waitTime || 60000));
+          await storage.updateJob(job.id, {
+            scheduledFor: rescheduleTime,
+            status: "pending",
+            progress: 0,
+            errorMessage: `Rate limited: ${rateLimitCheck.reasoning}. Rescheduled for ${rescheduleTime.toISOString()}`,
+          });
+          
+          results.push({ 
+            marketplace, 
+            success: false, 
+            error: `Rate limited: ${rateLimitCheck.reasoning}` 
+          });
+          continue;
+        }
+
+        // Apply optimal delay for rate limiting
+        const optimalDelay = await rateLimitService.getOptimalDelay(marketplace, job.priority || 0);
+        if (optimalDelay > 1000) { // Only delay if more than 1 second
+          console.log(`Applying rate limit delay of ${optimalDelay}ms for ${marketplace}`);
+          await new Promise(resolve => setTimeout(resolve, optimalDelay));
+        }
+
         // Create listing post record
         const listingPost = await storage.createListingPost({
           listingId,
@@ -50,6 +79,9 @@ class PostListingProcessor implements JobProcessor {
 
         try {
           const result = await marketplaceService.createListing(listing, marketplace, connection);
+          
+          // Record successful API request
+          await rateLimitService.recordRequest(marketplace, true);
           
           // Update listing post with success
           await storage.updateListingPost(listingPost.id, {
@@ -67,6 +99,21 @@ class PostListingProcessor implements JobProcessor {
           });
 
         } catch (error) {
+          // Record failed API request
+          await rateLimitService.recordRequest(marketplace, false);
+          
+          // Handle rate limit errors specifically
+          if (error instanceof RateLimitError) {
+            // Reschedule job for after rate limit resets
+            const rescheduleTime = new Date(Date.now() + error.waitTime);
+            await storage.updateJob(job.id, {
+              scheduledFor: rescheduleTime,
+              status: "pending",
+              progress: 0,
+              errorMessage: `Rate limited: ${error.message}. Rescheduled for ${rescheduleTime.toISOString()}`,
+            });
+          }
+          
           // Update listing post with error
           await storage.updateListingPost(listingPost.id, {
             status: "failed",
@@ -143,13 +190,60 @@ class DelistListingProcessor implements JobProcessor {
           continue;
         }
 
-        await marketplaceService.deleteListing(post.externalId, post.marketplace, connection);
-        
-        await storage.updateListingPost(post.id, {
-          status: "delisted",
-        });
+        // Check rate limits before delisting
+        const rateLimitCheck = await rateLimitService.checkRateLimit(post.marketplace, listing.userId);
+        if (!rateLimitCheck.allowed) {
+          // Reschedule job for later if rate limited
+          const rescheduleTime = new Date(Date.now() + (rateLimitCheck.waitTime || 60000));
+          await storage.updateJob(job.id, {
+            scheduledFor: rescheduleTime,
+            status: "pending",
+            progress: 0,
+            errorMessage: `Rate limited: ${rateLimitCheck.reasoning}. Rescheduled for ${rescheduleTime.toISOString()}`,
+          });
+          
+          results.push({ 
+            marketplace: post.marketplace, 
+            success: false, 
+            error: `Rate limited: ${rateLimitCheck.reasoning}` 
+          });
+          continue;
+        }
 
-        results.push({ marketplace: post.marketplace, success: true });
+        // Apply optimal delay for rate limiting
+        const optimalDelay = await rateLimitService.getOptimalDelay(post.marketplace, job.priority || 0);
+        if (optimalDelay > 1000) {
+          await new Promise(resolve => setTimeout(resolve, optimalDelay));
+        }
+
+        try {
+          await marketplaceService.deleteListing(post.externalId, post.marketplace, connection);
+          
+          // Record successful API request
+          await rateLimitService.recordRequest(post.marketplace, true);
+          
+          await storage.updateListingPost(post.id, {
+            status: "delisted",
+          });
+
+          results.push({ marketplace: post.marketplace, success: true });
+        } catch (deleteError) {
+          // Record failed API request
+          await rateLimitService.recordRequest(post.marketplace, false);
+          
+          // Handle rate limit errors specifically
+          if (deleteError instanceof RateLimitError) {
+            const rescheduleTime = new Date(Date.now() + deleteError.waitTime);
+            await storage.updateJob(job.id, {
+              scheduledFor: rescheduleTime,
+              status: "pending",
+              progress: 0,
+              errorMessage: `Rate limited: ${deleteError.message}. Rescheduled for ${rescheduleTime.toISOString()}`,
+            });
+          }
+          
+          throw deleteError; // Re-throw to be caught by outer catch
+        }
 
       } catch (error) {
         results.push({ 
