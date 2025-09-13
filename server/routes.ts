@@ -10,6 +10,9 @@ import { syncService } from "./services/syncService";
 import { autoDelistService } from "./services/autoDelistService";
 import { onboardingService, ONBOARDING_STEPS } from "./services/onboardingService";
 import { analyticsService } from "./services/analyticsService";
+import { optimizationEngine } from "./services/optimizationEngine";
+import { patternAnalysisService } from "./services/patternAnalysisService";
+import { recommendationService } from "./services/recommendationService";
 import { requireAuth, optionalAuth, requirePlan } from "./middleware/auth";
 import { insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema, insertSyncSettingsSchema, insertSyncRuleSchema, insertAutoDelistRuleSchema } from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, validatePassword, verifyToken } from "./auth";
@@ -101,6 +104,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const stats = await storage.getUserStats(req.user!.id);
       res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Optimization settings routes
+  app.put("/api/user/optimization-settings", requireAuth, async (req, res) => {
+    try {
+      const { optimizationSettingsSchema } = await import("@shared/schema");
+      const settings = optimizationSettingsSchema.parse(req.body);
+      
+      await storage.updateUser(req.user!.id, { 
+        optimizationSettings: settings 
+      });
+      
+      res.json({ 
+        success: true, 
+        settings,
+        message: "Optimization settings updated successfully" 
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/user/optimization-settings", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUserById(req.user!.id);
+      const settings = user?.optimizationSettings || {
+        autoOptimization: false,
+        autoScheduling: true,
+        autoPricing: false,
+        optimizationThreshold: 70,
+        learningMode: true,
+        notifyOptimizations: true,
+      };
+      res.json(settings);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -1379,6 +1419,279 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       const metrics = await storage.getMarketplaceMetrics(req.user!.id, filters);
       res.json(metrics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Optimization Engine API routes
+  app.get("/api/optimization/insights", requireAuth, async (req, res) => {
+    try {
+      const insights = await optimizationEngine.generateOptimizationInsights(req.user!.id);
+      res.json(insights);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/recommendations", requireAuth, async (req, res) => {
+    try {
+      const category = req.query.category as string;
+      const marketplace = req.query.marketplace as string;
+      const includeScheduling = req.query.includeScheduling === 'true';
+      
+      const recommendations = await optimizationEngine.getOptimizationRecommendations(req.user!.id, {
+        category,
+        marketplace,
+        includeScheduling
+      });
+      res.json(recommendations);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/patterns", requireAuth, async (req, res) => {
+    try {
+      const marketplace = req.query.marketplace as string;
+      const category = req.query.category as string;
+      const days = parseInt(req.query.days as string) || 30;
+      
+      const patterns = await patternAnalysisService.analyzeSuccessPatterns(req.user!.id, {
+        marketplace,
+        category,
+        timeRange: { days }
+      });
+      res.json(patterns);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/time-analysis", requireAuth, async (req, res) => {
+    try {
+      const marketplace = req.query.marketplace as string;
+      const category = req.query.category as string;
+      
+      const analysis = await patternAnalysisService.analyzeTimePatterns(req.user!.id, {
+        marketplace,
+        category
+      });
+      res.json(analysis);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/price-analysis", requireAuth, async (req, res) => {
+    try {
+      const marketplace = req.query.marketplace as string;
+      const category = req.query.category as string;
+      
+      const analysis = await patternAnalysisService.analyzePricePatterns(req.user!.id, {
+        marketplace,
+        category
+      });
+      res.json(analysis);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/correlations", requireAuth, async (req, res) => {
+    try {
+      const marketplace = req.query.marketplace as string;
+      
+      const correlations = await patternAnalysisService.analyzeCorrelations(req.user!.id, {
+        marketplace
+      });
+      res.json(correlations);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/trends", requireAuth, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const marketplace = req.query.marketplace as string;
+      
+      const trends = await patternAnalysisService.analyzeTrends(req.user!.id, {
+        timeRange: { days },
+        marketplace
+      });
+      res.json(trends);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/anomalies", requireAuth, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      
+      const anomalies = await patternAnalysisService.detectAnomalies(req.user!.id, {
+        timeRange: { days }
+      });
+      res.json(anomalies);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/opportunities", requireAuth, async (req, res) => {
+    try {
+      const opportunities = await recommendationService.identifyOptimizationOpportunities(req.user!.id);
+      res.json(opportunities);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/schedule-suggestions", requireAuth, async (req, res) => {
+    try {
+      const category = req.query.category as string;
+      const marketplace = req.query.marketplace as string;
+      const listingId = req.query.listingId as string;
+      
+      const suggestions = await recommendationService.generateScheduleSuggestions(req.user!.id, {
+        category,
+        marketplace,
+        listingId
+      });
+      res.json(suggestions);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/pricing-suggestions", requireAuth, async (req, res) => {
+    try {
+      const category = req.query.category as string;
+      const marketplace = req.query.marketplace as string;
+      const currentPrice = parseFloat(req.query.currentPrice as string);
+      const listingId = req.query.listingId as string;
+      
+      const suggestions = await recommendationService.generatePricingSuggestions(req.user!.id, {
+        category,
+        marketplace,
+        currentPrice,
+        listingId
+      });
+      res.json(suggestions);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/marketplace-recommendations", requireAuth, async (req, res) => {
+    try {
+      const category = req.query.category as string;
+      const listingId = req.query.listingId as string;
+      
+      const recommendations = await recommendationService.generateMarketplaceRecommendations(req.user!.id, {
+        category,
+        listingId
+      });
+      res.json(recommendations);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/content-suggestions", requireAuth, async (req, res) => {
+    try {
+      const listingId = req.query.listingId as string;
+      const marketplace = req.query.marketplace as string;
+      
+      const suggestions = await recommendationService.generateContentSuggestions(req.user!.id, {
+        listingId,
+        marketplace
+      });
+      res.json(suggestions);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/performance-forecast", requireAuth, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const marketplace = req.query.marketplace as string;
+      const category = req.query.category as string;
+      
+      const forecast = await optimizationEngine.generatePerformanceForecast(req.user!.id, {
+        forecastDays: days,
+        marketplace,
+        category
+      });
+      res.json(forecast);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/optimization/apply-recommendations", requireAuth, async (req, res) => {
+    try {
+      const { recommendations, applyScheduling, applyPricing } = req.body;
+      
+      const result = await optimizationEngine.applyOptimizationRecommendations(req.user!.id, {
+        recommendations,
+        applyScheduling: applyScheduling === true,
+        applyPricing: applyPricing === true
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/performance-comparison", requireAuth, async (req, res) => {
+    try {
+      const beforeDate = req.query.beforeDate ? new Date(req.query.beforeDate as string) : new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+      const afterDate = req.query.afterDate ? new Date(req.query.afterDate as string) : new Date();
+      
+      const comparison = await optimizationEngine.comparePerformance(req.user!.id, {
+        beforeDate,
+        afterDate
+      });
+      res.json(comparison);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/low-performing-listings", requireAuth, async (req, res) => {
+    try {
+      const threshold = parseInt(req.query.threshold as string) || 30;
+      
+      const lowPerformingListings = await storage.getListingsWithLowPerformance(req.user!.id, threshold);
+      res.json(lowPerformingListings);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/optimization/success-analytics", requireAuth, async (req, res) => {
+    try {
+      const filters = {
+        marketplace: req.query.marketplace as string,
+        marketplaces: req.query.marketplaces ? (req.query.marketplaces as string).split(',') : undefined,
+        categories: req.query.categories ? (req.query.categories as string).split(',') : undefined,
+        startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
+        endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+        category: req.query.category as string,
+        listingId: req.query.listingId as string,
+        dayOfWeek: req.query.dayOfWeek ? parseInt(req.query.dayOfWeek as string) : undefined,
+        hourOfDay: req.query.hourOfDay ? parseInt(req.query.hourOfDay as string) : undefined,
+        priceRange: req.query.priceRange as string,
+        minEngagement: req.query.minEngagement ? parseFloat(req.query.minEngagement as string) : undefined,
+        sold: req.query.sold === 'true' ? true : req.query.sold === 'false' ? false : undefined,
+        limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+      };
+      
+      const analytics = await storage.getPostingSuccessAnalytics(req.user!.id, filters);
+      res.json(analytics);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

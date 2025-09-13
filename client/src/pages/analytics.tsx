@@ -26,6 +26,7 @@ import {
   Clock, RefreshCw, Eye, Users, Percent, Calculator
 } from "lucide-react";
 import { motion } from "framer-motion";
+import OptimizationDashboard from "@/components/OptimizationDashboard";
 
 // Color palette for charts
 const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#14b8a6'];
@@ -425,7 +426,7 @@ export default function Analytics() {
 
       {/* Main Analytics Tabs */}
       <Tabs defaultValue="revenue" className="space-y-6">
-        <TabsList className="grid grid-cols-2 md:grid-cols-6 w-full">
+        <TabsList className="grid grid-cols-2 md:grid-cols-7 w-full">
           <TabsTrigger value="revenue" data-testid="tab-revenue">
             <DollarSign className="h-4 w-4 mr-2" />
             Revenue
@@ -445,6 +446,10 @@ export default function Analytics() {
           <TabsTrigger value="competition" data-testid="tab-competition">
             <Users className="h-4 w-4 mr-2" />
             Competition
+          </TabsTrigger>
+          <TabsTrigger value="optimization" data-testid="tab-optimization">
+            <Zap className="h-4 w-4 mr-2" />
+            Optimization
           </TabsTrigger>
           <TabsTrigger value="calculator" data-testid="tab-calculator">
             <Calculator className="h-4 w-4 mr-2" />
@@ -1057,6 +1062,11 @@ export default function Analytics() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Optimization Engine Tab */}
+        <TabsContent value="optimization" className="space-y-6" data-testid="content-optimization-tab">
+          <OptimizationDashboard />
         </TabsContent>
 
         {/* Profit Calculator Tab */}

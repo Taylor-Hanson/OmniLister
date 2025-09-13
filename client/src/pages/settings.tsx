@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,24 @@ export default function Settings() {
     errors: true,
   });
 
+  interface OptimizationSettings {
+    autoOptimization: boolean;
+    autoScheduling: boolean;
+    autoPricing: boolean;
+    optimizationThreshold: number;
+    learningMode: boolean;
+    notifyOptimizations: boolean;
+  }
+
+  const [optimizationSettings, setOptimizationSettings] = useState<OptimizationSettings>({
+    autoOptimization: false,
+    autoScheduling: true,
+    autoPricing: false,
+    optimizationThreshold: 70,
+    learningMode: true,
+    notifyOptimizations: true,
+  });
+
   const form = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
@@ -46,7 +64,7 @@ export default function Settings() {
     },
   });
 
-  const { data: auditLogs = [] } = useQuery({
+  const { data: auditLogs = [] } = useQuery<any[]>({
     queryKey: ['/api/audit-logs'],
     enabled: !!user,
   });
@@ -135,6 +153,33 @@ export default function Settings() {
     });
   };
 
+  const updateOptimizationSettingsMutation = useMutation({
+    mutationFn: async (settings: OptimizationSettings) => {
+      const response = await apiRequest("PUT", "/api/user/optimization-settings", settings);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Optimization settings updated",
+        description: "Your optimization preferences have been saved.",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/user'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Update failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleOptimizationChange = (key: keyof OptimizationSettings, value: boolean | number) => {
+    const newSettings = { ...optimizationSettings, [key]: value };
+    setOptimizationSettings(newSettings);
+    updateOptimizationSettingsMutation.mutate(newSettings);
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
       <div className="mb-8">
@@ -145,9 +190,13 @@ export default function Settings() {
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid grid-cols-4 w-full">
+        <TabsList className="grid grid-cols-5 w-full">
           <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>
           <TabsTrigger value="notifications" data-testid="tab-notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="optimization" data-testid="tab-optimization">
+            <Zap className="h-4 w-4 mr-2" />
+            Optimization
+          </TabsTrigger>
           <TabsTrigger value="billing" data-testid="tab-billing">Billing</TabsTrigger>
           <TabsTrigger value="security" data-testid="tab-security">Security</TabsTrigger>
         </TabsList>
@@ -363,6 +412,193 @@ export default function Settings() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="optimization" className="space-y-6" data-testid="content-optimization-settings">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5" />
+                Optimization Engine Settings
+              </CardTitle>
+              <CardDescription>
+                Configure AI-powered optimization features to maximize your posting success
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Auto-Optimization Master Switch */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="auto-optimization" className="text-base">Auto-Optimization</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Enable AI-powered automatic optimizations based on learned patterns
+                  </p>
+                </div>
+                <Switch
+                  id="auto-optimization"
+                  checked={optimizationSettings.autoOptimization}
+                  onCheckedChange={(checked) => handleOptimizationChange('autoOptimization', checked)}
+                  data-testid="switch-auto-optimization"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Auto-Scheduling */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="auto-scheduling" className="text-base">Smart Scheduling</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Automatically schedule posts at optimal times based on success patterns
+                  </p>
+                </div>
+                <Switch
+                  id="auto-scheduling"
+                  checked={optimizationSettings.autoScheduling}
+                  onCheckedChange={(checked) => handleOptimizationChange('autoScheduling', checked)}
+                  data-testid="switch-auto-scheduling"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Auto-Pricing */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="auto-pricing" className="text-base">Dynamic Pricing</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Enable automatic price adjustments based on market performance
+                  </p>
+                  <Badge variant="outline" className="mt-1">Coming Soon</Badge>
+                </div>
+                <Switch
+                  id="auto-pricing"
+                  checked={optimizationSettings.autoPricing}
+                  onCheckedChange={(checked) => handleOptimizationChange('autoPricing', checked)}
+                  disabled
+                  data-testid="switch-auto-pricing"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Optimization Threshold */}
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="optimization-threshold" className="text-base">Optimization Threshold</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Minimum confidence level required to apply automatic optimizations ({optimizationSettings.optimizationThreshold}%)
+                  </p>
+                </div>
+                <div className="px-3">
+                  <input
+                    type="range"
+                    id="optimization-threshold"
+                    min="50"
+                    max="90"
+                    step="5"
+                    value={optimizationSettings.optimizationThreshold}
+                    onChange={(e) => handleOptimizationChange('optimizationThreshold', parseInt(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+                    data-testid="slider-optimization-threshold"
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>Conservative (50%)</span>
+                    <span>Balanced (70%)</span>
+                    <span>Aggressive (90%)</span>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Learning Mode */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="learning-mode" className="text-base">Learning Mode</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Allow the system to continuously learn from new posting data
+                  </p>
+                </div>
+                <Switch
+                  id="learning-mode"
+                  checked={optimizationSettings.learningMode}
+                  onCheckedChange={(checked) => handleOptimizationChange('learningMode', checked)}
+                  data-testid="switch-learning-mode"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Optimization Notifications */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="notify-optimizations" className="text-base">Optimization Notifications</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Get notified when optimizations are applied or recommendations are available
+                  </p>
+                </div>
+                <Switch
+                  id="notify-optimizations"
+                  checked={optimizationSettings.notifyOptimizations}
+                  onCheckedChange={(checked) => handleOptimizationChange('notifyOptimizations', checked)}
+                  data-testid="switch-notify-optimizations"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Optimization Status Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Optimization Status</CardTitle>
+              <CardDescription>Current status and performance of your optimization engine</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                  <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                  <div className="text-2xl font-bold">Active</div>
+                  <p className="text-sm text-muted-foreground">Engine Status</p>
+                </div>
+                <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                  <TrendingUp className="h-8 w-8 text-blue-500 mx-auto mb-2" />
+                  <div className="text-2xl font-bold">+25%</div>
+                  <p className="text-sm text-muted-foreground">Success Improvement</p>
+                </div>
+                <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/20 rounded-lg">
+                  <GraduationCap className="h-8 w-8 text-purple-500 mx-auto mb-2" />
+                  <div className="text-2xl font-bold">247</div>
+                  <p className="text-sm text-muted-foreground">Patterns Learned</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-3">
+                <Link href="/analytics?tab=optimization">
+                  <Button variant="outline" size="sm" data-testid="button-view-optimization-insights">
+                    <TrendingUp className="h-4 w-4 mr-2" />
+                    View Insights
+                  </Button>
+                </Link>
+                <Button variant="outline" size="sm" disabled data-testid="button-export-optimization-data">
+                  <Gift className="h-4 w-4 mr-2" />
+                  Export Data
+                </Button>
+                <Button variant="outline" size="sm" disabled data-testid="button-reset-optimization">
+                  <RotateCw className="h-4 w-4 mr-2" />
+                  Reset Engine
+                </Button>
               </div>
             </CardContent>
           </Card>

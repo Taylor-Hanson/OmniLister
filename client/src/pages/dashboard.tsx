@@ -9,8 +9,10 @@ import LiveNotifications from "@/components/LiveNotifications";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { format } from "date-fns";
 import { Link } from "wouter";
+import { Zap, TrendingUp, Target, ArrowRight, Lightbulb } from "lucide-react";
 import type { Listing, Job, AuditLog } from "@shared/schema";
 
 export default function Dashboard() {
@@ -29,6 +31,17 @@ export default function Dashboard() {
 
   const { data: auditLogs = [] } = useQuery<AuditLog[]>({
     queryKey: ['/api/audit-logs'],
+    enabled: !!user,
+  });
+
+  // Fetch optimization insights for dashboard
+  const { data: optimizationInsights } = useQuery({
+    queryKey: ['/api/optimization/insights'],
+    enabled: !!user,
+  });
+
+  const { data: optimizationOpportunities } = useQuery({
+    queryKey: ['/api/optimization/opportunities'],
     enabled: !!user,
   });
 
@@ -137,6 +150,87 @@ export default function Dashboard() {
                   <span className="text-sm text-muted-foreground">Units Sold</span>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Optimization Insights */}
+          <Card data-testid="card-optimization-insights">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5 text-yellow-500" />
+                Optimization Insights
+              </CardTitle>
+              <Link href="/analytics?tab=optimization">
+                <Button variant="outline" size="sm" data-testid="button-view-full-optimization">
+                  <ArrowRight className="h-4 w-4 ml-1" />
+                  View Full Analysis
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {optimizationInsights ? (
+                <div className="space-y-4">
+                  {/* Optimization Score */}
+                  <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/50 dark:to-purple-950/50 rounded-lg">
+                    <div>
+                      <div className="text-2xl font-bold">{optimizationInsights.overallScore || 0}/100</div>
+                      <p className="text-sm text-muted-foreground">Optimization Score</p>
+                    </div>
+                    <div className="text-right">
+                      <TrendingUp className="h-8 w-8 text-green-500 mb-1" />
+                      <p className="text-xs text-muted-foreground">
+                        {optimizationInsights.overallScore >= 80 ? 'Excellent' : 
+                         optimizationInsights.overallScore >= 60 ? 'Good' : 'Needs Work'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Quick Stats */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center p-3 bg-muted/30 rounded-lg">
+                      <div className="text-lg font-bold text-blue-600">{optimizationOpportunities?.length || 0}</div>
+                      <p className="text-xs text-muted-foreground">Opportunities</p>
+                    </div>
+                    <div className="text-center p-3 bg-muted/30 rounded-lg">
+                      <div className="text-lg font-bold text-green-600">
+                        +{optimizationOpportunities?.reduce((sum: number, opp: any) => sum + opp.potentialImprovement, 0)?.toFixed(1) || 0}%
+                      </div>
+                      <p className="text-xs text-muted-foreground">Potential Boost</p>
+                    </div>
+                    <div className="text-center p-3 bg-muted/30 rounded-lg">
+                      <div className="text-lg font-bold text-purple-600">
+                        {optimizationOpportunities?.filter((opp: any) => opp.priority === 'high').length || 0}
+                      </div>
+                      <p className="text-xs text-muted-foreground">High Priority</p>
+                    </div>
+                  </div>
+
+                  {/* Top Opportunity */}
+                  {optimizationOpportunities && optimizationOpportunities.length > 0 && (
+                    <Alert data-testid="alert-top-opportunity">
+                      <Lightbulb className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>Top Opportunity:</strong> {optimizationOpportunities[0].description}
+                        <div className="mt-2">
+                          <Link href="/analytics?tab=optimization">
+                            <Button size="sm" data-testid="button-apply-top-opportunity">
+                              Apply Recommendation
+                            </Button>
+                          </Link>
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <Target className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                  <h4 className="font-medium text-muted-foreground">Optimization Engine Starting</h4>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Analysis will begin once you have more posting data
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
