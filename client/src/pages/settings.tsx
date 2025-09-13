@@ -93,7 +93,7 @@ export default function Settings() {
 
   const resetOnboardingMutation = useMutation({
     mutationFn: () =>
-      apiRequest("/api/onboarding/reset", { method: "POST" }),
+      apiRequest("POST", "/api/onboarding/reset"),
     onSuccess: () => {
       toast({
         title: "Tutorial Reset",

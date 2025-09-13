@@ -50,10 +50,7 @@ export default function OnboardingWizard() {
   // Update progress mutation
   const updateProgressMutation = useMutation({
     mutationFn: (data: { currentStep: number; completedStep?: number }) =>
-      apiRequest("/api/onboarding/progress", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
+      apiRequest("POST", "/api/onboarding/progress", data),
     onSuccess: (data) => {
       setCompletedSteps(data.progress.completedSteps || []);
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/progress"] });
@@ -63,7 +60,7 @@ export default function OnboardingWizard() {
   // Complete onboarding mutation
   const completeOnboardingMutation = useMutation({
     mutationFn: () =>
-      apiRequest("/api/onboarding/complete", { method: "POST" }),
+      apiRequest("POST", "/api/onboarding/complete"),
     onSuccess: () => {
       triggerConfetti();
       toast({
@@ -80,7 +77,7 @@ export default function OnboardingWizard() {
   // Skip onboarding mutation
   const skipOnboardingMutation = useMutation({
     mutationFn: () =>
-      apiRequest("/api/onboarding/skip", { method: "POST" }),
+      apiRequest("POST", "/api/onboarding/skip"),
     onSuccess: () => {
       setIsVisible(false);
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
