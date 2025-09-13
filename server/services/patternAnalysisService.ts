@@ -860,6 +860,95 @@ export class PatternAnalysisService {
       confidence: marketplaceData.length > 20 ? 85 : 60
     };
   }
+
+  /**
+   * Analyze patterns specific to batch operations
+   */
+  async analyzeBatchPatterns(userId: string, batchType: string): Promise<{
+    correlations: CorrelationResult[];
+    recommendations: string[];
+    optimalBatchSize?: number;
+    bestTimeSlots?: Array<{ hour: number; success_rate: number }>;
+    marketplacePreferences?: Array<{ marketplace: string; preference_score: number }>;
+  }> {
+    console.log(`🔍 Analyzing batch patterns for user ${userId}, type: ${batchType}`);
+    
+    try {
+      // Get historical batch performance data
+      const analytics = await storage.getPostingSuccessAnalytics(userId, {
+        startDate: subDays(new Date(), 90)
+      });
+      
+      if (analytics.length < 5) {
+        return {
+          correlations: [],
+          recommendations: ['Insufficient data for batch pattern analysis'],
+          optimalBatchSize: 10
+        };
+      }
+      
+      // Analyze time-based patterns
+      const timeSlots = analytics.reduce((acc, record) => {
+        const hour = record.hourOfDay;
+        const success = parseFloat(record.success_score || '0');
+        if (!acc[hour]) acc[hour] = { total: 0, count: 0 };
+        acc[hour].total += success;
+        acc[hour].count += 1;
+        return acc;
+      }, {} as Record<number, { total: number; count: number }>);
+      
+      const bestTimeSlots = Object.entries(timeSlots)
+        .map(([hour, data]) => ({
+          hour: parseInt(hour),
+          success_rate: data.total / data.count
+        }))
+        .sort((a, b) => b.success_rate - a.success_rate)
+        .slice(0, 6);
+      
+      // Analyze marketplace preferences
+      const marketplaceStats = analytics.reduce((acc, record) => {
+        const marketplace = record.marketplace;
+        const success = parseFloat(record.success_score || '0');
+        if (!acc[marketplace]) acc[marketplace] = { total: 0, count: 0 };
+        acc[marketplace].total += success;
+        acc[marketplace].count += 1;
+        return acc;
+      }, {} as Record<string, { total: number; count: 0 }>);
+      
+      const marketplacePreferences = Object.entries(marketplaceStats)
+        .map(([marketplace, data]) => ({
+          marketplace,
+          preference_score: data.total / data.count
+        }))
+        .sort((a, b) => b.preference_score - a.preference_score);
+      
+      // Generate correlations
+      const correlations = await this.findCorrelations(analytics);
+      
+      // Generate recommendations
+      const recommendations = [
+        `Optimal batch processing times: ${bestTimeSlots.slice(0, 3).map(t => `${t.hour}:00`).join(', ')}`,
+        `Top performing marketplaces: ${marketplacePreferences.slice(0, 3).map(m => m.marketplace).join(', ')}`,
+        `Recommended batch size: ${Math.min(50, Math.max(10, analytics.length / 10))} items`
+      ];
+      
+      return {
+        correlations,
+        recommendations,
+        optimalBatchSize: Math.min(50, Math.max(10, analytics.length / 10)),
+        bestTimeSlots,
+        marketplacePreferences
+      };
+      
+    } catch (error) {
+      console.error('Error analyzing batch patterns:', error);
+      return {
+        correlations: [],
+        recommendations: ['Error analyzing batch patterns'],
+        optimalBatchSize: 20
+      };
+    }
+  }
 }
 
 export const patternAnalysisService = new PatternAnalysisService();

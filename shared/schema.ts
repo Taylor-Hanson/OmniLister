@@ -830,3 +830,188 @@ export type RateLimitTracker = typeof rateLimitTracker.$inferSelect;
 export type InsertRateLimitTracker = z.infer<typeof insertRateLimitTrackerSchema>;
 export type QueueDistribution = typeof queueDistribution.$inferSelect;
 export type InsertQueueDistribution = z.infer<typeof insertQueueDistributionSchema>;
+
+// Batches - Main table for batch operations
+export const batches = pgTable("batches", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // bulk_post, bulk_delist, bulk_update, bulk_import
+  status: text("status").default("pending"), // pending, processing, paused, completed, failed, cancelled
+  totalItems: integer("total_items").default(0),
+  processedItems: integer("processed_items").default(0),
+  successfulItems: integer("successful_items").default(0),
+  failedItems: integer("failed_items").default(0),
+  progress: integer("progress").default(0), // 0-100
+  targetMarketplaces: text("target_marketplaces").array(), // Array of marketplace names
+  batchSettings: jsonb("batch_settings"), // Batch-specific configuration
+  schedulingSettings: jsonb("scheduling_settings"), // Smart scheduling preferences
+  priority: integer("priority").default(0), // Higher priority batches process first
+  estimatedCompletionAt: timestamp("estimated_completion_at"),
+  startedAt: timestamp("started_at"),
+  pausedAt: timestamp("paused_at"),
+  resumedAt: timestamp("resumed_at"),
+  completedAt: timestamp("completed_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  errorMessage: text("error_message"),
+  batchMetadata: jsonb("batch_metadata"), // Additional metadata for analytics
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Batch Items - Individual items within a batch
+export const batchItems = pgTable("batch_items", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchId: uuid("batch_id").notNull().references(() => batches.id, { onDelete: "cascade" }),
+  listingId: uuid("listing_id").references(() => listings.id, { onDelete: "set null" }),
+  jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+  itemIndex: integer("item_index").notNull(), // Order within batch
+  status: text("status").default("pending"), // pending, processing, completed, failed, skipped
+  itemData: jsonb("item_data"), // Original item data (for imports/creates)
+  processedData: jsonb("processed_data"), // Processed/transformed data
+  marketplaces: text("marketplaces").array(), // Target marketplaces for this item
+  scheduledFor: timestamp("scheduled_for"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  errorMessage: text("error_message"),
+  errorCategory: text("error_category"), // validation, network, marketplace, etc.
+  retryCount: integer("retry_count").default(0),
+  maxRetries: integer("max_retries").default(3),
+  itemMetadata: jsonb("item_metadata"), // Additional item-specific data
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Bulk Uploads - Track bulk upload sessions
+export const bulkUploads = pgTable("bulk_uploads", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  batchId: uuid("batch_id").references(() => batches.id, { onDelete: "set null" }),
+  uploadType: text("upload_type").notNull(), // csv, excel, images, json
+  fileName: text("file_name"),
+  fileSize: integer("file_size"), // In bytes
+  fileUrl: text("file_url"), // Object storage URL if applicable
+  status: text("status").default("processing"), // processing, completed, failed
+  totalRecords: integer("total_records").default(0),
+  validRecords: integer("valid_records").default(0),
+  invalidRecords: integer("invalid_records").default(0),
+  processingProgress: integer("processing_progress").default(0), // 0-100
+  validationErrors: jsonb("validation_errors"), // Array of validation errors
+  parsingErrors: jsonb("parsing_errors"), // File parsing errors
+  uploadSettings: jsonb("upload_settings"), // Upload-specific configuration
+  previewData: jsonb("preview_data"), // Sample of parsed data for preview
+  mappingConfiguration: jsonb("mapping_configuration"), // Field mapping for CSV/Excel
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Batch Templates - Saved batch configurations for reuse
+export const batchTemplates = pgTable("batch_templates", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  type: text("type").notNull(), // bulk_post, bulk_delist, bulk_update
+  isDefault: boolean("is_default").default(false),
+  templateConfig: jsonb("template_config").notNull(), // Complete template configuration
+  defaultMarketplaces: text("default_marketplaces").array(),
+  defaultScheduling: jsonb("default_scheduling"), // Default scheduling settings
+  fieldMappings: jsonb("field_mappings"), // Default field mappings for uploads
+  usageCount: integer("usage_count").default(0),
+  lastUsedAt: timestamp("last_used_at"),
+  isPublic: boolean("is_public").default(false), // Whether template can be shared
+  tags: text("tags").array(), // Tags for organization
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Batch Analytics - Track batch performance and analytics
+export const batchAnalytics = pgTable("batch_analytics", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  batchId: uuid("batch_id").notNull().references(() => batches.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace"), // null for overall batch analytics
+  totalItems: integer("total_items").default(0),
+  successfulItems: integer("successful_items").default(0),
+  failedItems: integer("failed_items").default(0),
+  avgProcessingTime: integer("avg_processing_time"), // Average time per item in seconds
+  totalProcessingTime: integer("total_processing_time"), // Total batch time in seconds
+  successRate: decimal("success_rate", { precision: 5, scale: 2 }), // Percentage
+  costEfficiency: decimal("cost_efficiency", { precision: 8, scale: 4 }), // Credits per successful item
+  optimizationScore: integer("optimization_score"), // 0-100 optimization effectiveness
+  rateLimitHits: integer("rate_limit_hits").default(0),
+  retryCount: integer("retry_count").default(0),
+  errorBreakdown: jsonb("error_breakdown"), // Categorized error counts
+  timingAnalytics: jsonb("timing_analytics"), // Detailed timing breakdown
+  recommendationApplied: boolean("recommendation_applied").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Batch Queue - Manage batch processing queue with priority
+export const batchQueue = pgTable("batch_queue", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchId: uuid("batch_id").notNull().references(() => batches.id, { onDelete: "cascade" }),
+  priority: integer("priority").default(0), // Higher numbers = higher priority
+  estimatedProcessingTime: integer("estimated_processing_time"), // Estimated seconds
+  dependencies: uuid("dependencies").array(), // Other batch IDs this depends on
+  maxConcurrency: integer("max_concurrency").default(1), // Max parallel items for this batch
+  preferredTimeSlot: timestamp("preferred_time_slot"),
+  queuePosition: integer("queue_position"),
+  assignedWorker: text("assigned_worker"),
+  startedProcessingAt: timestamp("started_processing_at"),
+  lastProgressUpdate: timestamp("last_progress_update"),
+  queueMetadata: jsonb("queue_metadata"), // Queue-specific data
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Insert schemas for batch tables
+export const insertBatchSchema = createInsertSchema(batches).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBatchItemSchema = createInsertSchema(batchItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBulkUploadSchema = createInsertSchema(bulkUploads).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBatchTemplateSchema = createInsertSchema(batchTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBatchAnalyticsSchema = createInsertSchema(batchAnalytics).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertBatchQueueSchema = createInsertSchema(batchQueue).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Batch types
+export type Batch = typeof batches.$inferSelect;
+export type InsertBatch = z.infer<typeof insertBatchSchema>;
+export type BatchItem = typeof batchItems.$inferSelect;
+export type InsertBatchItem = z.infer<typeof insertBatchItemSchema>;
+export type BulkUpload = typeof bulkUploads.$inferSelect;
+export type InsertBulkUpload = z.infer<typeof insertBulkUploadSchema>;
+export type BatchTemplate = typeof batchTemplates.$inferSelect;
+export type InsertBatchTemplate = z.infer<typeof insertBatchTemplateSchema>;
+export type BatchAnalytics = typeof batchAnalytics.$inferSelect;
+export type InsertBatchAnalytics = z.infer<typeof insertBatchAnalyticsSchema>;
+export type BatchQueue = typeof batchQueue.$inferSelect;
+export type InsertBatchQueue = z.infer<typeof insertBatchQueueSchema>;

@@ -898,6 +898,113 @@ export class RecommendationService {
     };
   }
 
+  /**
+   * Get batch ordering recommendations based on user patterns
+   */
+  async getBatchOrderingRecommendations(userId: string, items: any[]): Promise<{
+    orderingStrategy: 'priority' | 'marketplace' | 'category' | 'sequential';
+    optimizedOrder: any[];
+    reasoning: string;
+    estimatedImprovement: number;
+  }> {
+    console.log(`🎯 Generating batch ordering recommendations for ${items.length} items`);
+    
+    try {
+      // Get user patterns and performance data
+      const [userProfile, analytics] = await Promise.all([
+        this.buildUserProfile(userId),
+        storage.getPostingSuccessAnalytics(userId, {
+          startDate: subDays(new Date(), 30)
+        })
+      ]);
+      
+      if (analytics.length < 5) {
+        return {
+          orderingStrategy: 'sequential',
+          optimizedOrder: items,
+          reasoning: 'Insufficient data for optimization - using sequential order',
+          estimatedImprovement: 0
+        };
+      }
+      
+      // Analyze marketplace performance
+      const marketplacePerformance = analytics.reduce((acc, record) => {
+        const marketplace = record.marketplace;
+        const success = parseFloat(record.success_score || '0');
+        if (!acc[marketplace]) acc[marketplace] = { total: 0, count: 0 };
+        acc[marketplace].total += success;
+        acc[marketplace].count += 1;
+        return acc;
+      }, {} as Record<string, { total: number; count: number }>);
+      
+      // Sort marketplaces by performance
+      const sortedMarketplaces = Object.entries(marketplacePerformance)
+        .map(([marketplace, data]) => ({
+          marketplace,
+          avgScore: data.total / data.count
+        }))
+        .sort((a, b) => b.avgScore - a.avgScore);
+      
+      // Determine optimal ordering strategy
+      let orderingStrategy: 'priority' | 'marketplace' | 'category' | 'sequential' = 'sequential';
+      let optimizedOrder = [...items];
+      let reasoning = 'Using sequential order';
+      let estimatedImprovement = 0;
+      
+      if (sortedMarketplaces.length > 1) {
+        // Marketplace-based ordering if we have multiple marketplaces
+        orderingStrategy = 'marketplace';
+        optimizedOrder = items.sort((a, b) => {
+          const aMarketplaces = a.marketplaces || [];
+          const bMarketplaces = b.marketplaces || [];
+          const aScore = Math.max(...aMarketplaces.map((m: string) => 
+            marketplacePerformance[m]?.total / marketplacePerformance[m]?.count || 0
+          ));
+          const bScore = Math.max(...bMarketplaces.map((m: string) => 
+            marketplacePerformance[m]?.total / marketplacePerformance[m]?.count || 0
+          ));
+          return bScore - aScore;
+        });
+        reasoning = `Ordered by marketplace performance: ${sortedMarketplaces.slice(0, 3).map(m => m.marketplace).join(', ')}`;
+        estimatedImprovement = 15;
+        
+      } else if (items.some(item => item.priority)) {
+        // Priority-based ordering
+        orderingStrategy = 'priority';
+        optimizedOrder = items.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+        reasoning = 'Ordered by item priority for optimal processing';
+        estimatedImprovement = 10;
+        
+      } else {
+        // Category-based ordering as fallback
+        orderingStrategy = 'category';
+        optimizedOrder = items.sort((a, b) => {
+          const aCategory = a.itemData?.category || a.category || 'Other';
+          const bCategory = b.itemData?.category || b.category || 'Other';
+          return aCategory.localeCompare(bCategory);
+        });
+        reasoning = 'Grouped by category for efficient processing';
+        estimatedImprovement = 5;
+      }
+      
+      return {
+        orderingStrategy,
+        optimizedOrder,
+        reasoning,
+        estimatedImprovement
+      };
+      
+    } catch (error) {
+      console.error('Error generating batch ordering recommendations:', error);
+      return {
+        orderingStrategy: 'sequential',
+        optimizedOrder: items,
+        reasoning: 'Error occurred, using original order',
+        estimatedImprovement: 0
+      };
+    }
+  }
+
   private async analyzeRecentPerformance(userId: string): Promise<any> {
     const thirtyDaysAgo = subDays(new Date(), 30);
     
