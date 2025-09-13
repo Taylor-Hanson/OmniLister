@@ -66,6 +66,12 @@ export interface IStorage {
     conversionRate: number;
   }>;
 
+  // Usage tracking methods
+  canCreateListing(userId: string): Promise<boolean>;
+  incrementListingUsage(userId: string): Promise<void>;
+  resetMonthlyUsage(userId: string): Promise<void>;
+  checkAndResetBillingCycle(userId: string): Promise<void>;
+
   // Sync Settings methods
   getSyncSettings(userId: string): Promise<SyncSettings | undefined>;
   createSyncSettings(userId: string, settings: InsertSyncSettings): Promise<SyncSettings>;
@@ -163,6 +169,9 @@ export class MemStorage implements IStorage {
       ...insertUser,
       id,
       plan: "free",
+      listingCredits: 10,
+      listingsUsedThisMonth: 0,
+      billingCycleStart: new Date(),
       stripeCustomerId: null,
       stripeSubscriptionId: null,
       subscriptionStatus: "inactive",
@@ -805,6 +814,54 @@ export class MemStorage implements IStorage {
     const updated = { ...metrics, ...updates, updatedAt: new Date() };
     this.marketplaceMetrics.set(id, updated);
     return updated;
+  }
+
+  // Usage tracking methods
+  async canCreateListing(userId: string): Promise<boolean> {
+    const user = await this.getUser(userId);
+    if (!user) return false;
+    
+    // Check and reset billing cycle if needed
+    await this.checkAndResetBillingCycle(userId);
+    
+    // Unlimited plan has no limits
+    if (user.plan === 'unlimited' || user.listingCredits === null) {
+      return true;
+    }
+    
+    // Check if user has credits remaining
+    return (user.listingsUsedThisMonth || 0) < (user.listingCredits || 10);
+  }
+
+  async incrementListingUsage(userId: string): Promise<void> {
+    const user = await this.getUser(userId);
+    if (!user) return;
+    
+    await this.updateUser(userId, {
+      listingsUsedThisMonth: (user.listingsUsedThisMonth || 0) + 1
+    });
+  }
+
+  async resetMonthlyUsage(userId: string): Promise<void> {
+    await this.updateUser(userId, {
+      listingsUsedThisMonth: 0,
+      billingCycleStart: new Date()
+    });
+  }
+
+  async checkAndResetBillingCycle(userId: string): Promise<void> {
+    const user = await this.getUser(userId);
+    if (!user) return;
+    
+    const cycleStart = user.billingCycleStart || new Date();
+    const now = new Date();
+    const monthsSince = (now.getFullYear() - cycleStart.getFullYear()) * 12 + 
+                       (now.getMonth() - cycleStart.getMonth());
+    
+    // Reset if a month has passed
+    if (monthsSince >= 1) {
+      await this.resetMonthlyUsage(userId);
+    }
   }
 }
 

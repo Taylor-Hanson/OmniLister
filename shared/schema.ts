@@ -8,7 +8,10 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
-  plan: text("plan").notNull().default("free"), // free, pro, enterprise
+  plan: text("plan").notNull().default("free"), // free, starter, growth, professional, unlimited
+  listingCredits: integer("listing_credits").default(10), // Monthly listing allowance (null for unlimited)
+  listingsUsedThisMonth: integer("listings_used_this_month").default(0),
+  billingCycleStart: timestamp("billing_cycle_start").defaultNow(),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   subscriptionStatus: text("subscription_status").default("inactive"),

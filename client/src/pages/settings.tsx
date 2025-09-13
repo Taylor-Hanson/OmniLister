@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { RotateCw, GraduationCap } from "lucide-react";
+import { Link } from "wouter";
 
 const profileSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters"),
@@ -369,76 +370,114 @@ export default function Settings() {
         <TabsContent value="billing" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Current Plan</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-medium capitalize">
-                    {user?.plan || 'free'} Plan
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {user?.plan === 'free' && 'Get started with basic features'}
-                    {user?.plan === 'pro' && 'Perfect for serious resellers'}
-                    {user?.plan === 'enterprise' && 'Advanced features for large operations'}
-                  </p>
-                </div>
-                <Badge variant="outline" className="capitalize">
-                  {user?.subscriptionStatus || 'inactive'}
-                </Badge>
-              </div>
-
-              {user?.plan === 'free' ? (
-                <Alert>
-                  <i className="fas fa-info-circle h-4 w-4"></i>
-                  <AlertDescription>
-                    You're currently on the free plan. Upgrade to Pro for unlimited listings and advanced features.
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <Alert>
-                  <i className="fas fa-check-circle h-4 w-4"></i>
-                  <AlertDescription>
-                    Your subscription is active. Manage your billing through the Stripe customer portal.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              <div className="flex space-x-4 mt-4">
-                {user?.plan === 'free' && (
-                  <Button data-testid="button-upgrade-plan">
-                    <i className="fas fa-crown mr-2"></i>
-                    Upgrade to Pro
-                  </Button>
-                )}
-                
-                {user?.plan !== 'free' && (
-                  <Button variant="outline" data-testid="button-manage-billing">
-                    <i className="fas fa-credit-card mr-2"></i>
-                    Manage Billing
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Usage Statistics</CardTitle>
+              <CardTitle>Subscription Plan</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Listings this month</span>
-                  <span className="font-medium">0 / {user?.plan === 'free' ? '100' : '∞'}</span>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium capitalize text-lg">{user?.plan || "free"} Plan</p>
+                    <p className="text-sm text-muted-foreground">
+                      {user?.subscriptionStatus === "active" ? "Active subscription" : 
+                       user?.plan === "free" ? "Forever free plan" : "No active subscription"}
+                    </p>
+                  </div>
+                  <Badge variant={user?.subscriptionStatus === "active" || user?.plan === "free" ? "default" : "secondary"}>
+                    {user?.plan === "free" ? "Active" : (user?.subscriptionStatus || "Inactive")}
+                  </Badge>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">AI generations used</span>
-                  <span className="font-medium">0 / {user?.plan === 'free' ? '50' : '∞'}</span>
+
+                {/* Listing Usage */}
+                <div className="border rounded-lg p-4 bg-muted/50">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-medium">Monthly Listing Credits</span>
+                    <span className="text-sm text-muted-foreground">
+                      {user?.listingsUsedThisMonth || 0} / {user?.listingCredits || 10} used
+                    </span>
+                  </div>
+                  <div className="w-full bg-secondary rounded-full h-2">
+                    <div 
+                      className="bg-primary h-2 rounded-full transition-all"
+                      style={{width: `${((user?.listingsUsedThisMonth || 0) / (user?.listingCredits || 10)) * 100}%`}}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {user?.listingCredits === null ? "Unlimited listings" : 
+                     user?.listingCredits === (user?.listingsUsedThisMonth || 0) ? 
+                     "Monthly limit reached - upgrade to list more" : 
+                     `${(user?.listingCredits || 10) - (user?.listingsUsedThisMonth || 0)} listings remaining this month`}
+                  </p>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Storage used</span>
-                  <span className="font-medium">0 MB / {user?.plan === 'free' ? '1 GB' : '∞'}</span>
+
+                {/* Plan Details */}
+                <div className="border rounded-lg p-4">
+                  <h4 className="font-medium mb-2">Your Plan Includes:</h4>
+                  <ul className="space-y-1 text-sm text-muted-foreground">
+                    {user?.plan === "free" && (
+                      <>
+                        <li>• 10 new listings per month</li>
+                        <li>• Access to all 12 marketplaces</li>
+                        <li>• Basic analytics</li>
+                        <li>• Forever free - no expiration</li>
+                      </>
+                    )}
+                    {user?.plan === "starter" && (
+                      <>
+                        <li>• 50 new listings per month</li>
+                        <li>• Unlimited crossposting</li>
+                        <li>• AI listing assistance</li>
+                        <li>• Email support</li>
+                      </>
+                    )}
+                    {user?.plan === "growth" && (
+                      <>
+                        <li>• 300 new listings per month</li>
+                        <li>• Full automation suite</li>
+                        <li>• Advanced analytics</li>
+                        <li>• Priority support</li>
+                      </>
+                    )}
+                    {user?.plan === "professional" && (
+                      <>
+                        <li>• 1,000 new listings per month</li>
+                        <li>• Poshmark automation</li>
+                        <li>• API access</li>
+                        <li>• 24/7 priority support</li>
+                      </>
+                    )}
+                    {user?.plan === "unlimited" && (
+                      <>
+                        <li>• Unlimited new listings</li>
+                        <li>• AI-powered listing creation</li>
+                        <li>• Automatic price sync</li>
+                        <li>• 24/7 VIP support</li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+
+                {/* Billing Cycle */}
+                {user?.billingCycleStart && (
+                  <div className="text-sm text-muted-foreground">
+                    <p>Next renewal: {new Date(new Date(user.billingCycleStart).setMonth(new Date(user.billingCycleStart).getMonth() + 1)).toLocaleDateString()}</p>
+                  </div>
+                )}
+
+                {user?.plan === "free" && (
+                  <Alert>
+                    <AlertDescription>
+                      Upgrade to unlock more listings, automation features, and priority support.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex gap-2">
+                  <Button asChild data-testid="button-view-pricing">
+                    <Link href="/pricing">View All Plans</Link>
+                  </Button>
+                  <Button variant="outline" asChild data-testid="button-manage-subscription">
+                    <Link href="/subscribe">Manage Subscription</Link>
+                  </Button>
                 </div>
               </div>
             </CardContent>
