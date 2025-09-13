@@ -17,10 +17,15 @@ import { ObjectStorageService } from "./objectStorage";
 // Stripe client - only initialized if API key is available
 let stripe: Stripe | null = null;
 
-if (process.env.STRIPE_SECRET_KEY) {
-  stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+// Use testing keys if production keys aren't available
+// Note: The testing keys are mislabeled - TESTING_VITE_STRIPE_PUBLIC_KEY is actually the secret key
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY || process.env.TESTING_VITE_STRIPE_PUBLIC_KEY;
+
+if (stripeSecretKey) {
+  stripe = new Stripe(stripeSecretKey, {
     apiVersion: "2023-10-16",
   });
+  console.log('Stripe initialized successfully with key starting with:', stripeSecretKey.substring(0, 7));
 } else {
   console.warn('STRIPE_SECRET_KEY not set - Subscription features will be disabled');
 }
@@ -906,7 +911,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(501).json({ error: "Stripe is not configured - subscription features are disabled" });
     }
     
+    const { planId, priceId } = req.body;
     let user = req.user!;
+
+    // Map plan IDs to Stripe price IDs (you'll need to create these in Stripe)
+    const stripePriceIds: { [key: string]: string } = {
+      starter: process.env.STRIPE_PRICE_ID_STARTER || 'price_starter_test',
+      growth: process.env.STRIPE_PRICE_ID_GROWTH || 'price_growth_test',
+      professional: process.env.STRIPE_PRICE_ID_PROFESSIONAL || 'price_professional_test',
+      unlimited: process.env.STRIPE_PRICE_ID_UNLIMITED || 'price_unlimited_test',
+    };
+
+    const selectedPriceId = stripePriceIds[planId] || priceId;
+    if (!selectedPriceId || planId === 'free') {
+      return res.status(400).json({ error: "Invalid plan selected" });
+    }
 
     if (user.stripeSubscriptionId) {
       try {
@@ -940,16 +959,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const subscription = await stripe.subscriptions.create({
         customer: customer.id,
         items: [{
-          price: process.env.STRIPE_PRICE_ID, // Pro plan price ID
+          price: selectedPriceId,
         }],
         payment_behavior: 'default_incomplete',
         expand: ['latest_invoice.payment_intent'],
+        metadata: {
+          planId: planId,
+        },
       });
 
       await storage.updateUser(user.id, { 
         stripeSubscriptionId: subscription.id,
         subscriptionStatus: subscription.status,
-        plan: "pro"
+        plan: planId
       });
   
       const invoice = subscription.latest_invoice as any;
@@ -989,12 +1011,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (user) {
             let plan = "free";
             if (subscription.status === "active") {
-              plan = "pro"; // Map based on your price IDs
+              // Use metadata to determine the plan
+              plan = (subscription.metadata as any)?.planId || "starter";
             }
+            
+            // Define plan limits
+            const planLimits: { [key: string]: number | null } = {
+              free: 10,
+              starter: 50,
+              growth: 300,
+              professional: 1000,
+              unlimited: null,
+            };
             
             await storage.updateUser(user.id, {
               subscriptionStatus: subscription.status,
               plan,
+              listingCredits: planLimits[plan],
             });
           }
         }

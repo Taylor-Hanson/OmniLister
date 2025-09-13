@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -8,8 +8,23 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription as DialogDesc } from "@/components/ui/dialog";
-import { CheckCircle, Info, Mail, Zap, Crown, Rocket, TrendingUp, Gift } from "lucide-react";
+import { CheckCircle, Info, Mail, Zap, Crown, Rocket, TrendingUp, Gift, CreditCard } from "lucide-react";
 import { useLocation } from "wouter";
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+// Initialize Stripe - use testing key if production key isn't available
+// Note: The testing keys are mislabeled - TESTING_STRIPE_SECRET_KEY is actually the publishable key
+const stripePublicKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY || import.meta.env.TESTING_STRIPE_SECRET_KEY || '';
+const stripePromise = loadStripe(stripePublicKey);
+
+// Price IDs for each plan (you'll need to set these up in Stripe)
+const STRIPE_PRICE_IDS: { [key: string]: string } = {
+  starter: 'price_starter', // Replace with actual Stripe price ID
+  growth: 'price_growth', // Replace with actual Stripe price ID
+  professional: 'price_professional', // Replace with actual Stripe price ID
+  unlimited: 'price_unlimited', // Replace with actual Stripe price ID
+};
 
 const PRICING_PLANS = [
   {
@@ -52,7 +67,7 @@ const PRICING_PLANS = [
       "AI listing assistance",
       "Email support",
     ],
-    available: false,
+    available: true,
   },
   {
     id: "growth",
@@ -75,7 +90,7 @@ const PRICING_PLANS = [
       "Priority support",
       "Custom templates",
     ],
-    available: false,
+    available: true,
   },
   {
     id: "professional",
@@ -96,7 +111,7 @@ const PRICING_PLANS = [
       "API access",
       "24/7 priority support",
     ],
-    available: false,
+    available: true,
   },
   {
     id: "unlimited",
@@ -119,9 +134,78 @@ const PRICING_PLANS = [
       "Custom integrations",
       "24/7 VIP support",
     ],
-    available: false,
+    available: true,
   },
 ];
+
+// Checkout form component
+function CheckoutForm({ clientSecret, planId }: { clientSecret: string; planId: string }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const { refreshUser } = useAuth();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!stripe || !elements) {
+      return;
+    }
+
+    setIsProcessing(true);
+
+    const { error } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/dashboard`,
+      },
+      redirect: 'if_required',
+    });
+
+    if (error) {
+      toast({
+        title: "Payment failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      setIsProcessing(false);
+    } else {
+      // Payment succeeded
+      toast({
+        title: "Payment successful!",
+        description: `You are now subscribed to the ${planId} plan`,
+      });
+      await refreshUser();
+      setLocation('/dashboard');
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <PaymentElement />
+      <Button 
+        type="submit" 
+        disabled={!stripe || isProcessing}
+        className="w-full"
+        data-testid="button-submit-payment"
+      >
+        {isProcessing ? (
+          <>
+            <i className="fas fa-spinner fa-spin mr-2"></i>
+            Processing...
+          </>
+        ) : (
+          <>
+            <CreditCard className="w-4 h-4 mr-2" />
+            Subscribe Now
+          </>
+        )}
+      </Button>
+    </form>
+  );
+}
 
 export default function Subscribe() {
   const { user, refreshUser } = useAuth();
@@ -130,6 +214,17 @@ export default function Subscribe() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [showContactDialog, setShowContactDialog] = useState(false);
   const [contactPlan, setContactPlan] = useState<typeof PRICING_PLANS[0] | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [isLoadingPayment, setIsLoadingPayment] = useState(false);
+
+  // Get plan from URL parameters
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const planFromUrl = urlParams.get('plan');
+    if (planFromUrl && PRICING_PLANS.find(p => p.id === planFromUrl)) {
+      handlePlanSelection(planFromUrl);
+    }
+  }, []);
 
   const selectPlanMutation = useMutation({
     mutationFn: async (plan: string) => {
@@ -143,14 +238,7 @@ export default function Subscribe() {
           description: data.message,
         });
         await refreshUser();
-        setLocation("/");
-      } else if (data.requiresPayment) {
-        // Show contact sales dialog
-        const plan = PRICING_PLANS.find(p => p.id === selectedPlan);
-        if (plan) {
-          setContactPlan(plan);
-          setShowContactDialog(true);
-        }
+        setLocation("/dashboard");
       }
     },
     onError: (error: any) => {
@@ -162,9 +250,39 @@ export default function Subscribe() {
     },
   });
 
+  const createSubscriptionMutation = useMutation({
+    mutationFn: async (planId: string) => {
+      const response = await apiRequest("POST", "/api/get-or-create-subscription", { 
+        planId,
+        priceId: STRIPE_PRICE_IDS[planId] 
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.clientSecret) {
+        setClientSecret(data.clientSecret);
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create subscription",
+        variant: "destructive",
+      });
+      setIsLoadingPayment(false);
+    },
+  });
+
   const handlePlanSelection = (planId: string) => {
     setSelectedPlan(planId);
-    selectPlanMutation.mutate(planId);
+    
+    if (planId === 'free') {
+      selectPlanMutation.mutate(planId);
+    } else {
+      // For paid plans, create Stripe subscription
+      setIsLoadingPayment(true);
+      createSubscriptionMutation.mutate(planId);
+    }
   };
 
   if (user?.plan && user.plan !== 'free') {
@@ -180,10 +298,53 @@ export default function Subscribe() {
           </p>
           <Button 
             className="mt-6" 
-            onClick={() => setLocation('/')}
+            onClick={() => setLocation('/dashboard')}
             data-testid="button-return-dashboard"
           >
             Go to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // If we have a client secret, show the Stripe payment form
+  if (clientSecret && selectedPlan && selectedPlan !== 'free') {
+    const plan = PRICING_PLANS.find(p => p.id === selectedPlan);
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 max-w-2xl mx-auto">
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold text-foreground">Complete Your Subscription</h1>
+          <p className="text-muted-foreground mt-2">
+            You're subscribing to the {plan?.name} plan - {plan?.price}/month
+          </p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Details</CardTitle>
+            <CardDescription>
+              Enter your payment information to start your subscription
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Elements stripe={stripePromise} options={{ clientSecret }}>
+              <CheckoutForm clientSecret={clientSecret} planId={selectedPlan} />
+            </Elements>
+          </CardContent>
+        </Card>
+
+        <div className="mt-6 text-center">
+          <Button 
+            variant="ghost" 
+            onClick={() => {
+              setClientSecret(null);
+              setSelectedPlan(null);
+              setIsLoadingPayment(false);
+            }}
+            data-testid="button-back-to-plans"
+          >
+            Back to Plans
           </Button>
         </div>
       </div>
@@ -195,7 +356,7 @@ export default function Subscribe() {
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-bold text-foreground">Choose Your Plan</h1>
         <p className="text-muted-foreground mt-2">
-          Start with our free plan or contact us for paid plan early access
+          Select the plan that fits your reselling goals
         </p>
       </div>
 
@@ -203,9 +364,23 @@ export default function Subscribe() {
         <Info className="h-4 w-4" />
         <AlertDescription>
           <strong>Limited Time Offer:</strong> Start with our free plan and get 10 listings per month forever! 
-          Paid plans with Stripe integration are coming soon. Contact us for early access.
+          Upgrade to any paid plan to unlock more listings and advanced features.
         </AlertDescription>
       </Alert>
+
+      {isLoadingPayment && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <Card className="w-96">
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center space-y-4">
+                <i className="fas fa-spinner fa-spin text-4xl text-primary"></i>
+                <p className="text-lg font-medium">Preparing checkout...</p>
+                <p className="text-sm text-muted-foreground">Setting up your secure payment</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         {PRICING_PLANS.map((plan) => {
@@ -273,34 +448,30 @@ export default function Subscribe() {
                   >
                     Current Plan
                   </Button>
-                ) : plan.available ? (
-                  <Button 
-                    className="w-full" 
-                    onClick={() => handlePlanSelection(plan.id)}
-                    disabled={selectPlanMutation.isPending}
-                    data-testid={`button-select-${plan.id}`}
-                  >
-                    {selectPlanMutation.isPending && selectedPlan === plan.id ? (
-                      <>
-                        <i className="fas fa-spinner fa-spin mr-2"></i>
-                        Activating...
-                      </>
-                    ) : (
-                      'Select Free Plan'
-                    )}
-                  </Button>
                 ) : (
                   <Button 
                     className="w-full" 
-                    variant="outline"
-                    onClick={() => {
-                      setContactPlan(plan);
-                      setShowContactDialog(true);
-                    }}
-                    data-testid={`button-contact-${plan.id}`}
+                    onClick={() => handlePlanSelection(plan.id)}
+                    disabled={selectPlanMutation.isPending || isLoadingPayment}
+                    data-testid={`button-select-${plan.id}`}
                   >
-                    <Mail className="w-4 h-4 mr-2" />
-                    Contact Sales
+                    {(selectPlanMutation.isPending || isLoadingPayment) && selectedPlan === plan.id ? (
+                      <>
+                        <i className="fas fa-spinner fa-spin mr-2"></i>
+                        {plan.id === 'free' ? 'Activating...' : 'Loading...'}
+                      </>
+                    ) : (
+                      <>
+                        {plan.id === 'free' ? (
+                          'Select Free Plan'
+                        ) : (
+                          <>
+                            <CreditCard className="w-4 h-4 mr-2" />
+                            Subscribe - {plan.price}/mo
+                          </>
+                        )}
+                      </>
+                    )}
                   </Button>
                 )}
               </CardContent>
@@ -315,7 +486,7 @@ export default function Subscribe() {
           <DialogHeader>
             <DialogTitle>Get Early Access to {contactPlan?.name} Plan</DialogTitle>
             <DialogDesc>
-              Paid plans with automatic billing are coming soon! Get early access by contacting our sales team.
+              Contact our sales team for special pricing or custom requirements.
             </DialogDesc>
           </DialogHeader>
           <div className="space-y-4">
@@ -338,7 +509,7 @@ export default function Subscribe() {
             <Alert>
               <Mail className="h-4 w-4" />
               <AlertDescription>
-                Contact us at <a href="mailto:sales@crosslist.com" className="font-medium underline">sales@crosslist.com</a> to get early access to paid plans with special introductory pricing.
+                Contact us at <a href="mailto:sales@crosslist.com" className="font-medium underline">sales@crosslist.com</a> for enterprise pricing or custom requirements.
               </AlertDescription>
             </Alert>
             
