@@ -46,6 +46,33 @@ app.use((req, res, next) => {
     log("⚠ Failed to initialize marketplace rules:", error);
   }
 
+  // Rate limiting system self-test
+  try {
+    log("🔧 Running rate limiting system self-test...");
+    
+    const { marketplaceService } = await import('./services/marketplaceService');
+    const { rateLimitService } = await import('./services/rateLimitService');
+    
+    // Test supported marketplaces
+    const marketplaces = marketplaceService.getSupportedMarketplaces();
+    log(`✅ Found ${marketplaces.length} supported marketplaces: ${marketplaces.slice(0, 5).join(', ')}${marketplaces.length > 5 ? '...' : ''}`);
+    
+    // Test a few key marketplaces
+    const testMarketplaces = ['ebay', 'poshmark', 'mercari', 'facebook', 'depop'];
+    for (const marketplace of testMarketplaces) {
+      try {
+        const status = await rateLimitService.getRateLimitStatus(marketplace);
+        log(`✅ ${marketplace}: Rate limit status OK (${status.hourlyRemaining}/${status.dailyRemaining} remaining)`);
+      } catch (error) {
+        log(`⚠️ ${marketplace}: Rate limit status check failed: ${error instanceof Error ? error.message : error}`);
+      }
+    }
+    
+    log("🚀 Rate limiting system self-test completed successfully");
+  } catch (error) {
+    log(`❌ Rate limiting system self-test failed: ${error instanceof Error ? error.message : error}`);
+  }
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

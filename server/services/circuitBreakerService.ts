@@ -491,6 +491,28 @@ export class CircuitBreakerService {
 
     console.warn(`Circuit breaker FORCE OPENED for marketplace: ${marketplace}. Reason: ${reason}`);
   }
+
+  /**
+   * Get the current state of a circuit breaker (used by rate limit service)
+   */
+  async getState(marketplace: string): Promise<CircuitBreakerState> {
+    const circuitBreaker = await this.getCircuitBreakerStatus(marketplace);
+    return circuitBreaker.status as CircuitBreakerState;
+  }
+
+  /**
+   * Check if a half-open request can be made (used by rate limit service)
+   */
+  async canMakeHalfOpenRequest(marketplace: string): Promise<boolean> {
+    const circuitBreaker = await this.getCircuitBreakerStatus(marketplace);
+    
+    if (circuitBreaker.status !== "half_open") {
+      return false;
+    }
+
+    const config = this.DEFAULT_CONFIG;
+    return circuitBreaker.currentHalfOpenRequests < config.halfOpenMaxRequests;
+  }
 }
 
 export const circuitBreakerService = new CircuitBreakerService();

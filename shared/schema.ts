@@ -140,6 +140,7 @@ export const rateLimitTracker = pgTable("rate_limit_tracker", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   marketplace: text("marketplace").notNull(),
   timeWindow: timestamp("time_window").notNull(), // Hour or day window start
+  windowStart: timestamp("window_start").notNull(), // Alias for timeWindow for backwards compatibility
   windowType: text("window_type").notNull(), // hourly, daily
   requestCount: integer("request_count").default(0),
   successCount: integer("success_count").default(0),
@@ -147,6 +148,7 @@ export const rateLimitTracker = pgTable("rate_limit_tracker", {
   remainingLimit: integer("remaining_limit"),
   resetTime: timestamp("reset_time"),
   lastRequestAt: timestamp("last_request_at"),
+  isBlocked: boolean("is_blocked").default(false), // Whether marketplace is currently rate limited
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -282,11 +284,13 @@ export const analyticsEvents = pgTable("analytics_events", {
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   eventType: text("event_type").notNull(), // listing_created, listing_sold, marketplace_connected, etc.
   eventData: jsonb("event_data"), // Flexible JSON for event-specific data
+  metadata: jsonb("metadata"), // Additional metadata for events
   marketplace: text("marketplace"),
   listingId: uuid("listing_id").references(() => listings.id, { onDelete: "set null" }),
   revenue: decimal("revenue", { precision: 10, scale: 2 }),
   profit: decimal("profit", { precision: 10, scale: 2 }),
   timestamp: timestamp("timestamp").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(), // For compatibility with services expecting createdAt
 });
 
 // Sales Metrics - Detailed metrics for each sale
@@ -537,6 +541,7 @@ export const insertPostingSuccessAnalyticsSchema = createInsertSchema(postingSuc
 export const insertRateLimitTrackerSchema = createInsertSchema(rateLimitTracker).pick({
   marketplace: true,
   timeWindow: true,
+  windowStart: true,
   windowType: true,
   requestCount: true,
   successCount: true,
@@ -544,6 +549,7 @@ export const insertRateLimitTrackerSchema = createInsertSchema(rateLimitTracker)
   remainingLimit: true,
   resetTime: true,
   lastRequestAt: true,
+  isBlocked: true,
 });
 
 export const insertQueueDistributionSchema = createInsertSchema(queueDistribution).pick({
@@ -620,6 +626,7 @@ export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgr
 export const insertAnalyticsEventSchema = createInsertSchema(analyticsEvents).pick({
   eventType: true,
   eventData: true,
+  metadata: true,
   marketplace: true,
   listingId: true,
   revenue: true,

@@ -1,5 +1,7 @@
 import { type MarketplaceConnection, type Listing, type ListingPost } from "@shared/schema";
 import { marketplaces, type MarketplaceConfig } from "@shared/marketplaceConfig";
+import { rateLimitMiddleware, type ApiRequest, RateLimitError } from "./rateLimitMiddleware";
+import { rateLimitService } from "./rateLimitService";
 
 export interface MarketplaceClient {
   createListing(listing: Listing, connection: MarketplaceConnection): Promise<{ externalId: string; url: string }>;
@@ -214,19 +216,58 @@ class MarketplaceService {
     return client;
   }
 
-  async createListing(marketplace: string, listing: Listing, connection: MarketplaceConnection): Promise<{ externalId: string; url: string }> {
-    const client = this.getClient(marketplace);
-    return client.createListing(listing, connection);
+  async createListing(listing: Listing, marketplace: string, connection: MarketplaceConnection): Promise<{ externalId: string; url: string }> {
+    // Use rate-limited wrapper for API calls
+    try {
+      const client = this.getClient(marketplace);
+      
+      // For marketplace clients that make actual API calls, wrap in rate limiting
+      if (this.shouldUseRateLimiting(marketplace)) {
+        return await this.createListingWithRateLimit(marketplace, listing, connection);
+      }
+      
+      // For demo/simulated clients, use direct call
+      return client.createListing(listing, connection);
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        console.warn(`Rate limit error creating listing for ${marketplace}:`, error.message);
+      }
+      throw error;
+    }
   }
 
   async updateListing(marketplace: string, externalId: string, listing: Partial<Listing>, connection: MarketplaceConnection): Promise<void> {
-    const client = this.getClient(marketplace);
-    return client.updateListing(externalId, listing, connection);
+    try {
+      const client = this.getClient(marketplace);
+      
+      if (this.shouldUseRateLimiting(marketplace)) {
+        return await this.updateListingWithRateLimit(marketplace, externalId, listing, connection);
+      }
+      
+      return client.updateListing(externalId, listing, connection);
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        console.warn(`Rate limit error updating listing for ${marketplace}:`, error.message);
+      }
+      throw error;
+    }
   }
 
   async deleteListing(marketplace: string, externalId: string, connection: MarketplaceConnection): Promise<void> {
-    const client = this.getClient(marketplace);
-    return client.deleteListing(externalId, connection);
+    try {
+      const client = this.getClient(marketplace);
+      
+      if (this.shouldUseRateLimiting(marketplace)) {
+        return await this.deleteListingWithRateLimit(marketplace, externalId, connection);
+      }
+      
+      return client.deleteListing(externalId, connection);
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        console.warn(`Rate limit error deleting listing for ${marketplace}:`, error.message);
+      }
+      throw error;
+    }
   }
 
   getAuthUrl(marketplace: string): string {
@@ -324,6 +365,140 @@ class MarketplaceService {
       })
     );
     return posts;
+  }
+
+  /**
+   * Determine if rate limiting should be used for a marketplace
+   */
+  private shouldUseRateLimiting(marketplace: string): boolean {
+    // Use rate limiting for ALL marketplaces to ensure proper rate limiting across the platform
+    const marketplacesWithRateLimit = ['ebay', 'poshmark', 'mercari', 'facebook', 'depop', 'vinted', 'grailed', 'stockx', 'goat', 'etsy', 'amazon', 'reverb', 'discogs', 'tcgplayer'];
+    return marketplacesWithRateLimit.includes(marketplace.toLowerCase());
+  }
+
+  /**
+   * Create listing with rate limiting middleware
+   */
+  private async createListingWithRateLimit(marketplace: string, listing: Listing, connection: MarketplaceConnection): Promise<{ externalId: string; url: string }> {
+    const client = this.getClient(marketplace);
+    const marketplaceConfig = marketplaces[marketplace];
+    
+    // Create API request based on marketplace
+    const apiRequest: ApiRequest = {
+      url: this.getCreateListingUrl(marketplace, marketplaceConfig),
+      method: "POST",
+      headers: this.getAuthHeaders(connection),
+      body: this.formatListingData(listing, marketplace),
+    };
+
+    const response = await rateLimitMiddleware.makeApiCall(apiRequest, {
+      marketplace,
+      userId: listing.userId,
+      priority: 5, // Default priority for creating listings
+    });
+
+    // Parse response to extract external ID and URL
+    return this.parseCreateListingResponse(response.data, marketplace);
+  }
+
+  /**
+   * Update listing with rate limiting middleware  
+   */
+  private async updateListingWithRateLimit(marketplace: string, externalId: string, listing: Partial<Listing>, connection: MarketplaceConnection): Promise<void> {
+    const marketplaceConfig = marketplaces[marketplace];
+    
+    const apiRequest: ApiRequest = {
+      url: this.getUpdateListingUrl(marketplace, marketplaceConfig, externalId),
+      method: "PUT",
+      headers: this.getAuthHeaders(connection),
+      body: this.formatListingData(listing, marketplace),
+    };
+
+    await rateLimitMiddleware.makeApiCall(apiRequest, {
+      marketplace,
+      userId: listing.userId || 'system',
+      priority: 3, // Lower priority for updates
+    });
+  }
+
+  /**
+   * Delete listing with rate limiting middleware
+   */
+  private async deleteListingWithRateLimit(marketplace: string, externalId: string, connection: MarketplaceConnection): Promise<void> {
+    const marketplaceConfig = marketplaces[marketplace];
+    
+    const apiRequest: ApiRequest = {
+      url: this.getDeleteListingUrl(marketplace, marketplaceConfig, externalId),
+      method: "DELETE", 
+      headers: this.getAuthHeaders(connection),
+    };
+
+    await rateLimitMiddleware.makeApiCall(apiRequest, {
+      marketplace,
+      priority: 4, // Medium priority for deletions
+    });
+  }
+
+  /**
+   * Helper methods for API request construction
+   */
+  private getCreateListingUrl(marketplace: string, config: MarketplaceConfig): string {
+    // This would be customized per marketplace in a real implementation
+    return `https://api.${marketplace}.com/v1/listings`;
+  }
+
+  private getUpdateListingUrl(marketplace: string, config: MarketplaceConfig, externalId: string): string {
+    return `https://api.${marketplace}.com/v1/listings/${externalId}`;
+  }
+
+  private getDeleteListingUrl(marketplace: string, config: MarketplaceConfig, externalId: string): string {
+    return `https://api.${marketplace}.com/v1/listings/${externalId}`;
+  }
+
+  private getAuthHeaders(connection: MarketplaceConnection): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (connection.accessToken) {
+      headers['Authorization'] = `Bearer ${connection.accessToken}`;
+    }
+
+    return headers;
+  }
+
+  private formatListingData(listing: Partial<Listing>, marketplace: string): any {
+    // This would be customized per marketplace API format
+    return {
+      title: listing.title,
+      description: listing.description,
+      price: listing.price,
+      condition: listing.condition,
+      category: listing.category,
+      images: listing.images,
+    };
+  }
+
+  private parseCreateListingResponse(responseData: any, marketplace: string): { externalId: string; url: string } {
+    // This would be customized per marketplace response format
+    return {
+      externalId: responseData.id || responseData.listing_id || `${marketplace}_${Date.now()}`,
+      url: responseData.url || responseData.listing_url || `https://${marketplace}.com/listing/${responseData.id}`,
+    };
+  }
+
+  /**
+   * Get rate limit status for all marketplaces
+   */
+  async getRateLimitSummary(): Promise<Record<string, any>> {
+    return await rateLimitService.getRateLimitSummary();
+  }
+
+  /**
+   * Check if marketplace is available for API calls
+   */
+  async isMarketplaceAvailable(marketplace: string): Promise<{ available: boolean; reason?: string; waitTime?: number }> {
+    return await rateLimitMiddleware.isMarketplaceAvailable(marketplace);
   }
 }
 

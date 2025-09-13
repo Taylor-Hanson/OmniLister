@@ -845,10 +845,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Rate Limit Tracker methods
-  async getRateLimitTracker(marketplace: string, windowType: string): Promise<RateLimitTracker | undefined> {
-    const [tracker] = await db.select().from(rateLimitTracker)
-      .where(and(eq(rateLimitTracker.marketplace, marketplace), eq(rateLimitTracker.windowType, windowType)));
-    return tracker || undefined;
+  async getRateLimitTracker(marketplace: string, windowType?: string): Promise<RateLimitTracker | undefined> {
+    if (windowType) {
+      const [tracker] = await db.select().from(rateLimitTracker)
+        .where(and(eq(rateLimitTracker.marketplace, marketplace), eq(rateLimitTracker.windowType, windowType)))
+        .orderBy(desc(rateLimitTracker.timeWindow))
+        .limit(1);
+      return tracker || undefined;
+    } else {
+      // Return the most recent tracker for any window type
+      const [tracker] = await db.select().from(rateLimitTracker)
+        .where(eq(rateLimitTracker.marketplace, marketplace))
+        .orderBy(desc(rateLimitTracker.timeWindow))
+        .limit(1);
+      return tracker || undefined;
+    }
   }
 
   async createRateLimitTracker(tracker: InsertRateLimitTracker): Promise<RateLimitTracker> {
@@ -863,7 +874,29 @@ export class DatabaseStorage implements IStorage {
     return newTracker;
   }
 
-  async updateRateLimitTracker(id: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker> {
+  async updateRateLimitTracker(marketplace: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker> {
+    // First try to find existing tracker for this marketplace
+    const existing = await this.getRateLimitTracker(marketplace);
+    
+    if (existing) {
+      return this.updateRateLimitTrackerById(existing.id, updates);
+    } else {
+      // Create new tracker if none exists
+      const newTracker = await this.createRateLimitTracker({
+        marketplace,
+        windowType: "hour",
+        requestCount: 0,
+        windowStart: new Date(),
+        timeWindow: new Date(),
+        lastRequestAt: new Date(),
+        isBlocked: false,
+        ...updates,
+      });
+      return newTracker;
+    }
+  }
+
+  async updateRateLimitTrackerById(id: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker> {
     const [tracker] = await db
       .update(rateLimitTracker)
       .set(updates)
@@ -888,6 +921,35 @@ export class DatabaseStorage implements IStorage {
     }
     
     return result;
+  }
+
+  async getRateLimitUsageInWindow(marketplace: string, startTime: Date, endTime: Date): Promise<number> {
+    const result = await db
+      .select({ total: sql<number>`sum(${rateLimitTracker.requestCount})` })
+      .from(rateLimitTracker)
+      .where(and(
+        eq(rateLimitTracker.marketplace, marketplace),
+        gte(rateLimitTracker.timeWindow, startTime),
+        lte(rateLimitTracker.timeWindow, endTime)
+      ));
+
+    return Number(result[0]?.total || 0);
+  }
+
+  async getAllRateLimitTrackers(marketplace?: string): Promise<RateLimitTracker[]> {
+    if (marketplace) {
+      return await db.select().from(rateLimitTracker)
+        .where(eq(rateLimitTracker.marketplace, marketplace))
+        .orderBy(desc(rateLimitTracker.timeWindow));
+    }
+    return await db.select().from(rateLimitTracker)
+      .orderBy(desc(rateLimitTracker.timeWindow));
+  }
+
+  async cleanupOldRateLimitTrackers(olderThan: Date): Promise<number> {
+    const result = await db.delete(rateLimitTracker)
+      .where(lte(rateLimitTracker.createdAt, olderThan));
+    return result.rowCount || 0;
   }
 
   // Queue Distribution methods
