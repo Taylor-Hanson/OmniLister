@@ -11,7 +11,11 @@ import {
   type SyncConflict, type InsertSyncConflict,
   type AutoDelistRule, type InsertAutoDelistRule,
   type AutoDelistHistory, type InsertAutoDelistHistory,
-  type OnboardingProgress, type InsertOnboardingProgress
+  type OnboardingProgress, type InsertOnboardingProgress,
+  type AnalyticsEvent, type InsertAnalyticsEvent,
+  type SalesMetrics, type InsertSalesMetrics,
+  type InventoryMetrics, type InsertInventoryMetrics,
+  type MarketplaceMetrics, type InsertMarketplaceMetrics
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -102,6 +106,24 @@ export interface IStorage {
   completeOnboarding(userId: string): Promise<OnboardingProgress>;
   skipOnboarding(userId: string): Promise<OnboardingProgress>;
   resetOnboarding(userId: string): Promise<OnboardingProgress>;
+
+  // Analytics Event methods
+  createAnalyticsEvent(userId: string, event: InsertAnalyticsEvent): Promise<AnalyticsEvent>;
+  getAnalyticsEvents(userId: string, filters?: { eventType?: string; marketplace?: string; startDate?: Date; endDate?: Date }): Promise<AnalyticsEvent[]>;
+  
+  // Sales Metrics methods
+  createSalesMetrics(userId: string, metrics: InsertSalesMetrics): Promise<SalesMetrics>;
+  getSalesMetrics(userId: string, filters?: { marketplace?: string; category?: string; startDate?: Date; endDate?: Date }): Promise<SalesMetrics[]>;
+  
+  // Inventory Metrics methods
+  createInventoryMetrics(userId: string, metrics: InsertInventoryMetrics): Promise<InventoryMetrics>;
+  getInventoryMetrics(userId: string, filters?: { status?: string; category?: string }): Promise<InventoryMetrics[]>;
+  updateInventoryMetrics(id: string, updates: Partial<InventoryMetrics>): Promise<InventoryMetrics>;
+  
+  // Marketplace Metrics methods
+  createMarketplaceMetrics(userId: string, metrics: InsertMarketplaceMetrics): Promise<MarketplaceMetrics>;
+  getMarketplaceMetrics(userId: string, filters?: { marketplace?: string; period?: string }): Promise<MarketplaceMetrics[]>;
+  updateMarketplaceMetrics(id: string, updates: Partial<MarketplaceMetrics>): Promise<MarketplaceMetrics>;
 }
 
 export class MemStorage implements IStorage {
@@ -118,6 +140,10 @@ export class MemStorage implements IStorage {
   private autoDelistRules: Map<string, AutoDelistRule> = new Map();
   private autoDelistHistory: Map<string, AutoDelistHistory> = new Map();
   private onboardingProgress: Map<string, OnboardingProgress> = new Map();
+  private analyticsEvents: Map<string, AnalyticsEvent> = new Map();
+  private salesMetrics: Map<string, SalesMetrics> = new Map();
+  private inventoryMetrics: Map<string, InventoryMetrics> = new Map();
+  private marketplaceMetrics: Map<string, MarketplaceMetrics> = new Map();
 
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
@@ -642,6 +668,143 @@ export class MemStorage implements IStorage {
     }
     
     return progress;
+  }
+
+  // Analytics Event methods
+  async createAnalyticsEvent(userId: string, event: InsertAnalyticsEvent): Promise<AnalyticsEvent> {
+    const id = randomUUID();
+    const analyticsEvent: AnalyticsEvent = {
+      ...event,
+      id,
+      userId,
+      timestamp: new Date(),
+    };
+    this.analyticsEvents.set(id, analyticsEvent);
+    return analyticsEvent;
+  }
+
+  async getAnalyticsEvents(userId: string, filters?: { eventType?: string; marketplace?: string; startDate?: Date; endDate?: Date }): Promise<AnalyticsEvent[]> {
+    let events = Array.from(this.analyticsEvents.values()).filter(event => event.userId === userId);
+    
+    if (filters?.eventType) {
+      events = events.filter(event => event.eventType === filters.eventType);
+    }
+    if (filters?.marketplace) {
+      events = events.filter(event => event.marketplace === filters.marketplace);
+    }
+    if (filters?.startDate) {
+      events = events.filter(event => new Date(event.timestamp) >= filters.startDate!);
+    }
+    if (filters?.endDate) {
+      events = events.filter(event => new Date(event.timestamp) <= filters.endDate!);
+    }
+    
+    return events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }
+
+  // Sales Metrics methods
+  async createSalesMetrics(userId: string, metrics: InsertSalesMetrics): Promise<SalesMetrics> {
+    const id = randomUUID();
+    const salesMetrics: SalesMetrics = {
+      ...metrics,
+      id,
+      userId,
+      soldAt: new Date(),
+    };
+    this.salesMetrics.set(id, salesMetrics);
+    return salesMetrics;
+  }
+
+  async getSalesMetrics(userId: string, filters?: { marketplace?: string; category?: string; startDate?: Date; endDate?: Date }): Promise<SalesMetrics[]> {
+    let metrics = Array.from(this.salesMetrics.values()).filter(metric => metric.userId === userId);
+    
+    if (filters?.marketplace) {
+      metrics = metrics.filter(metric => metric.marketplace === filters.marketplace);
+    }
+    if (filters?.category) {
+      metrics = metrics.filter(metric => metric.category === filters.category);
+    }
+    if (filters?.startDate) {
+      metrics = metrics.filter(metric => new Date(metric.soldAt) >= filters.startDate!);
+    }
+    if (filters?.endDate) {
+      metrics = metrics.filter(metric => new Date(metric.soldAt) <= filters.endDate!);
+    }
+    
+    return metrics.sort((a, b) => new Date(b.soldAt).getTime() - new Date(a.soldAt).getTime());
+  }
+
+  // Inventory Metrics methods
+  async createInventoryMetrics(userId: string, metrics: InsertInventoryMetrics): Promise<InventoryMetrics> {
+    const id = randomUUID();
+    const inventoryMetrics: InventoryMetrics = {
+      ...metrics,
+      id,
+      userId,
+      listDate: metrics.listDate || new Date(),
+      updatedAt: new Date(),
+    };
+    this.inventoryMetrics.set(id, inventoryMetrics);
+    return inventoryMetrics;
+  }
+
+  async getInventoryMetrics(userId: string, filters?: { status?: string; category?: string }): Promise<InventoryMetrics[]> {
+    let metrics = Array.from(this.inventoryMetrics.values()).filter(metric => metric.userId === userId);
+    
+    if (filters?.status) {
+      metrics = metrics.filter(metric => metric.status === filters.status);
+    }
+    if (filters?.category) {
+      metrics = metrics.filter(metric => metric.category === filters.category);
+    }
+    
+    return metrics.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+
+  async updateInventoryMetrics(id: string, updates: Partial<InventoryMetrics>): Promise<InventoryMetrics> {
+    const metrics = this.inventoryMetrics.get(id);
+    if (!metrics) {
+      throw new Error('Inventory metrics not found');
+    }
+    const updated = { ...metrics, ...updates, updatedAt: new Date() };
+    this.inventoryMetrics.set(id, updated);
+    return updated;
+  }
+
+  // Marketplace Metrics methods
+  async createMarketplaceMetrics(userId: string, metrics: InsertMarketplaceMetrics): Promise<MarketplaceMetrics> {
+    const id = randomUUID();
+    const marketplaceMetrics: MarketplaceMetrics = {
+      ...metrics,
+      id,
+      userId,
+      updatedAt: new Date(),
+    };
+    this.marketplaceMetrics.set(id, marketplaceMetrics);
+    return marketplaceMetrics;
+  }
+
+  async getMarketplaceMetrics(userId: string, filters?: { marketplace?: string; period?: string }): Promise<MarketplaceMetrics[]> {
+    let metrics = Array.from(this.marketplaceMetrics.values()).filter(metric => metric.userId === userId);
+    
+    if (filters?.marketplace) {
+      metrics = metrics.filter(metric => metric.marketplace === filters.marketplace);
+    }
+    if (filters?.period) {
+      metrics = metrics.filter(metric => metric.period === filters.period);
+    }
+    
+    return metrics.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+
+  async updateMarketplaceMetrics(id: string, updates: Partial<MarketplaceMetrics>): Promise<MarketplaceMetrics> {
+    const metrics = this.marketplaceMetrics.get(id);
+    if (!metrics) {
+      throw new Error('Marketplace metrics not found');
+    }
+    const updated = { ...metrics, ...updates, updatedAt: new Date() };
+    this.marketplaceMetrics.set(id, updated);
+    return updated;
   }
 }
 

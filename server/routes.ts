@@ -9,6 +9,7 @@ import { queueService } from "./services/queueService";
 import { syncService } from "./services/syncService";
 import { autoDelistService } from "./services/autoDelistService";
 import { onboardingService, ONBOARDING_STEPS } from "./services/onboardingService";
+import { analyticsService } from "./services/analyticsService";
 import { requireAuth, optionalAuth, requirePlan } from "./middleware/auth";
 import { insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema, insertSyncSettingsSchema, insertSyncRuleSchema, insertAutoDelistRuleSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
@@ -954,6 +955,182 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const stats = await autoDelistService.getStats(req.user!.id);
       res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Analytics routes
+  app.get("/api/analytics/overview", requireAuth, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const metrics = await analyticsService.getOverviewMetrics(req.user!.id, days);
+      res.json(metrics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/analytics/revenue", requireAuth, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const revenue = await analyticsService.getRevenueAnalytics(req.user!.id, days);
+      res.json(revenue);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/analytics/inventory", requireAuth, async (req, res) => {
+    try {
+      const inventory = await analyticsService.getInventoryAnalytics(req.user!.id);
+      res.json(inventory);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/analytics/marketplace", requireAuth, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const marketplace = await analyticsService.getMarketplaceAnalytics(req.user!.id, days);
+      res.json(marketplace);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/analytics/forecast", requireAuth, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const forecast = await analyticsService.generateForecasts(req.user!.id, days);
+      res.json(forecast);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/analytics/competition", requireAuth, async (req, res) => {
+    try {
+      const competition = await analyticsService.analyzeCompetition(req.user!.id);
+      res.json(competition);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/analytics/pricing", requireAuth, async (req, res) => {
+    try {
+      const pricing = await analyticsService.optimizePricing(req.user!.id);
+      res.json(pricing);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/analytics/track", requireAuth, async (req, res) => {
+    try {
+      const { eventType, eventData, marketplace, listingId, revenue, profit } = req.body;
+      const event = await analyticsService.trackEvent(
+        req.user!.id,
+        eventType,
+        eventData,
+        marketplace,
+        listingId,
+        revenue,
+        profit
+      );
+      res.json(event);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/analytics/track-sale", requireAuth, async (req, res) => {
+    try {
+      const { listingId, marketplace, salePrice, fees } = req.body;
+      const listing = await storage.getListing(listingId);
+      
+      if (!listing || listing.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Listing not found" });
+      }
+
+      await analyticsService.trackSale(req.user!.id, listing, marketplace, salePrice, fees);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/analytics/export", requireAuth, async (req, res) => {
+    try {
+      const format = (req.query.format as 'json' | 'csv') || 'json';
+      const report = await analyticsService.generateReport(req.user!.id, format);
+      
+      if (format === 'csv') {
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="analytics-report.csv"');
+        res.send(report);
+      } else {
+        res.json(report);
+      }
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Analytics events endpoints
+  app.get("/api/analytics/events", requireAuth, async (req, res) => {
+    try {
+      const filters = {
+        eventType: req.query.eventType as string,
+        marketplace: req.query.marketplace as string,
+        startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
+        endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+      };
+      const events = await storage.getAnalyticsEvents(req.user!.id, filters);
+      res.json(events);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/analytics/sales-metrics", requireAuth, async (req, res) => {
+    try {
+      const filters = {
+        marketplace: req.query.marketplace as string,
+        category: req.query.category as string,
+        startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
+        endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+      };
+      const metrics = await storage.getSalesMetrics(req.user!.id, filters);
+      res.json(metrics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/analytics/inventory-metrics", requireAuth, async (req, res) => {
+    try {
+      const filters = {
+        status: req.query.status as string,
+        category: req.query.category as string,
+      };
+      const metrics = await storage.getInventoryMetrics(req.user!.id, filters);
+      res.json(metrics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/analytics/marketplace-metrics", requireAuth, async (req, res) => {
+    try {
+      const filters = {
+        marketplace: req.query.marketplace as string,
+        period: req.query.period as string,
+      };
+      const metrics = await storage.getMarketplaceMetrics(req.user!.id, filters);
+      res.json(metrics);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

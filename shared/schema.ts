@@ -195,6 +195,64 @@ export const onboardingProgress = pgTable("onboarding_progress", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Analytics Events - Track all user actions and system events
+export const analyticsEvents = pgTable("analytics_events", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(), // listing_created, listing_sold, marketplace_connected, etc.
+  eventData: jsonb("event_data"), // Flexible JSON for event-specific data
+  marketplace: text("marketplace"),
+  listingId: uuid("listing_id").references(() => listings.id, { onDelete: "set null" }),
+  revenue: decimal("revenue", { precision: 10, scale: 2 }),
+  profit: decimal("profit", { precision: 10, scale: 2 }),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+// Sales Metrics - Detailed metrics for each sale
+export const salesMetrics = pgTable("sales_metrics", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  listingId: uuid("listing_id").references(() => listings.id, { onDelete: "set null" }),
+  salePrice: decimal("sale_price", { precision: 10, scale: 2 }).notNull(),
+  fees: decimal("fees", { precision: 10, scale: 2 }).notNull(),
+  profit: decimal("profit", { precision: 10, scale: 2 }).notNull(),
+  margin: decimal("margin", { precision: 5, scale: 2 }), // Profit margin percentage
+  daysToSell: integer("days_to_sell"),
+  marketplace: text("marketplace").notNull(),
+  category: text("category"),
+  brand: text("brand"),
+  soldAt: timestamp("sold_at").defaultNow(),
+});
+
+// Inventory Metrics - Track inventory performance
+export const inventoryMetrics = pgTable("inventory_metrics", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  listingId: uuid("listing_id").references(() => listings.id, { onDelete: "set null" }),
+  costOfGoods: decimal("cost_of_goods", { precision: 10, scale: 2 }),
+  listDate: timestamp("list_date").defaultNow(),
+  ageInDays: integer("age_in_days").default(0),
+  turnoverRate: decimal("turnover_rate", { precision: 5, scale: 2 }), // Items sold / average inventory
+  category: text("category"),
+  status: text("status"), // active, sold, stale, dead
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Marketplace Metrics - Aggregate metrics per marketplace
+export const marketplaceMetrics = pgTable("marketplace_metrics", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace").notNull(),
+  totalSales: integer("total_sales").default(0),
+  totalRevenue: decimal("total_revenue", { precision: 12, scale: 2 }).default("0"),
+  avgConversionRate: decimal("avg_conversion_rate", { precision: 5, scale: 2 }),
+  avgDaysToSell: decimal("avg_days_to_sell", { precision: 6, scale: 2 }),
+  period: text("period"), // daily, weekly, monthly, yearly
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   email: true,
@@ -297,6 +355,48 @@ export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgr
   skipped: true,
 });
 
+export const insertAnalyticsEventSchema = createInsertSchema(analyticsEvents).pick({
+  eventType: true,
+  eventData: true,
+  marketplace: true,
+  listingId: true,
+  revenue: true,
+  profit: true,
+});
+
+export const insertSalesMetricsSchema = createInsertSchema(salesMetrics).pick({
+  listingId: true,
+  salePrice: true,
+  fees: true,
+  profit: true,
+  margin: true,
+  daysToSell: true,
+  marketplace: true,
+  category: true,
+  brand: true,
+});
+
+export const insertInventoryMetricsSchema = createInsertSchema(inventoryMetrics).pick({
+  listingId: true,
+  costOfGoods: true,
+  listDate: true,
+  ageInDays: true,
+  turnoverRate: true,
+  category: true,
+  status: true,
+});
+
+export const insertMarketplaceMetricsSchema = createInsertSchema(marketplaceMetrics).pick({
+  marketplace: true,
+  totalSales: true,
+  totalRevenue: true,
+  avgConversionRate: true,
+  avgDaysToSell: true,
+  period: true,
+  periodStart: true,
+  periodEnd: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -323,3 +423,11 @@ export type AutoDelistHistory = typeof autoDelistHistory.$inferSelect;
 export type InsertAutoDelistHistory = z.infer<typeof insertAutoDelistHistorySchema>;
 export type OnboardingProgress = typeof onboardingProgress.$inferSelect;
 export type InsertOnboardingProgress = z.infer<typeof insertOnboardingProgressSchema>;
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
+export type InsertAnalyticsEvent = z.infer<typeof insertAnalyticsEventSchema>;
+export type SalesMetrics = typeof salesMetrics.$inferSelect;
+export type InsertSalesMetrics = z.infer<typeof insertSalesMetricsSchema>;
+export type InventoryMetrics = typeof inventoryMetrics.$inferSelect;
+export type InsertInventoryMetrics = z.infer<typeof insertInventoryMetricsSchema>;
+export type MarketplaceMetrics = typeof marketplaceMetrics.$inferSelect;
+export type InsertMarketplaceMetrics = z.infer<typeof insertMarketplaceMetricsSchema>;
