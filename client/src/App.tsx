@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { WebSocketProvider } from "@/contexts/WebSocketContext";
 import Layout from "@/components/Layout";
 import OnboardingWizard from "@/components/OnboardingWizard";
 import Login from "@/pages/login";
@@ -44,7 +45,7 @@ function Router() {
   return (
     <>
       {user ? (
-        <>
+        <WebSocketProvider>
           <Layout>
             <Switch>
             <Route path="/" component={Dashboard} />
@@ -62,7 +63,7 @@ function Router() {
             </Switch>
           </Layout>
           <OnboardingWizard />
-        </>
+        </WebSocketProvider>
       ) : (
         <Switch>
           <Route path="/" component={Login} />

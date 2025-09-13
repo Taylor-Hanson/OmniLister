@@ -85,13 +85,58 @@ export class SmartScheduler {
   async scheduleJobs(context: SchedulingContext): Promise<SmartScheduleResult> {
     const { user, listing, requestedMarketplaces, requestedTime, priority } = context;
     
+    // Emit smart scheduling start notification
+    if (global.broadcastToUser) {
+      global.broadcastToUser(user.id, {
+        type: 'smart_schedule',
+        data: {
+          stage: 'analysis_started',
+          listingId: listing.id,
+          listingTitle: listing.title,
+          marketplaces: requestedMarketplaces,
+          requestedTime: requestedTime?.toISOString(),
+          priority,
+          message: 'Analyzing optimal posting times...'
+        }
+      });
+    }
+    
     // Get marketplace posting rules, user analytics, and rate limits
     const [postingRules, userAnalytics, rateLimitStatuses] = await Promise.all([
       this.getMarketplacePostingRules(requestedMarketplaces),
       this.getUserSuccessAnalytics(user.id, requestedMarketplaces),
       this.getRateLimitStatuses(requestedMarketplaces),
     ]);
+    
+    // Emit data collection complete
+    if (global.broadcastToUser) {
+      global.broadcastToUser(user.id, {
+        type: 'smart_schedule',
+        data: {
+          stage: 'data_collected',
+          listingId: listing.id,
+          rateLimitStatuses: Object.keys(rateLimitStatuses).map(marketplace => ({
+            marketplace,
+            healthy: rateLimitStatuses[marketplace].canMakeRequest,
+            estimatedDelay: rateLimitStatuses[marketplace].estimatedDelay
+          })),
+          message: 'Rate limits and analytics analyzed'
+        }
+      });
+    }
 
+    // Emit optimal window calculation start
+    if (global.broadcastToUser) {
+      global.broadcastToUser(user.id, {
+        type: 'smart_schedule',
+        data: {
+          stage: 'calculating_windows',
+          listingId: listing.id,
+          message: 'Calculating optimal posting windows...'
+        }
+      });
+    }
+    
     // Determine optimal time windows for each marketplace
     const optimalWindows = await this.calculateOptimalWindows(
       requestedMarketplaces,
@@ -100,7 +145,36 @@ export class SmartScheduler {
       user.timezone || "UTC",
       listing.category
     );
+    
+    // Emit windows calculated
+    if (global.broadcastToUser) {
+      global.broadcastToUser(user.id, {
+        type: 'smart_schedule',
+        data: {
+          stage: 'windows_calculated',
+          listingId: listing.id,
+          optimalWindows: Object.keys(optimalWindows).map(marketplace => ({
+            marketplace,
+            windowCount: optimalWindows[marketplace].length,
+            bestScore: Math.max(...optimalWindows[marketplace].map(w => w.score))
+          })),
+          message: 'Optimal windows identified for each marketplace'
+        }
+      });
+    }
 
+    // Emit distribution start
+    if (global.broadcastToUser) {
+      global.broadcastToUser(user.id, {
+        type: 'smart_schedule',
+        data: {
+          stage: 'distributing_jobs',
+          listingId: listing.id,
+          message: 'Applying intelligent distribution strategy...'
+        }
+      });
+    }
+    
     // Apply smart distribution strategy with rate limit awareness
     const scheduledJobs = await this.distributeAcrossTimeSlots(
       optimalWindows,
@@ -112,6 +186,34 @@ export class SmartScheduler {
     // Calculate metrics
     const totalDelay = this.calculateTotalDelay(scheduledJobs, requestedTime);
     const distributionStrategy = this.getDistributionStrategy(scheduledJobs);
+    
+    // Emit scheduling complete with results
+    if (global.broadcastToUser) {
+      global.broadcastToUser(user.id, {
+        type: 'smart_schedule',
+        data: {
+          stage: 'scheduling_complete',
+          listingId: listing.id,
+          listingTitle: listing.title,
+          scheduledJobs: scheduledJobs.map(job => ({
+            marketplace: job.marketplace,
+            scheduledFor: job.scheduledFor.toISOString(),
+            reasoning: job.reasoning,
+            confidenceScore: job.confidenceScore,
+            estimatedSuccessRate: job.estimatedSuccessRate
+          })),
+          totalDelay,
+          distributionStrategy,
+          summary: {
+            immediateJobs: scheduledJobs.filter(j => j.scheduledFor <= new Date(Date.now() + 60000)).length,
+            delayedJobs: scheduledJobs.filter(j => j.scheduledFor > new Date(Date.now() + 60000)).length,
+            averageConfidence: scheduledJobs.reduce((sum, j) => sum + j.confidenceScore, 0) / scheduledJobs.length,
+            averageSuccessRate: scheduledJobs.reduce((sum, j) => sum + j.estimatedSuccessRate, 0) / scheduledJobs.length
+          },
+          message: `Smart scheduling complete: ${scheduledJobs.length} jobs optimally scheduled`
+        }
+      });
+    }
 
     return {
       scheduledJobs,

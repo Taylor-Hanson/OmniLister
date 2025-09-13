@@ -12,7 +12,7 @@ import { onboardingService, ONBOARDING_STEPS } from "./services/onboardingServic
 import { analyticsService } from "./services/analyticsService";
 import { requireAuth, optionalAuth, requirePlan } from "./middleware/auth";
 import { insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema, insertSyncSettingsSchema, insertSyncRuleSchema, insertAutoDelistRuleSchema } from "@shared/schema";
-import { hashPassword, verifyPassword, generateToken, validatePassword } from "./auth";
+import { hashPassword, verifyPassword, generateToken, validatePassword, verifyToken } from "./auth";
 import { ObjectStorageService } from "./objectStorage";
 
 // Stripe client - only initialized if API key is available
@@ -1388,9 +1388,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // WebSocket server for real-time updates
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-  
+
+  // Enhanced WebSocket event types
+  interface WebSocketEvent {
+    type: 'job_status' | 'job_progress' | 'rate_limit' | 'circuit_breaker' | 'smart_schedule' | 'marketplace_health' | 'queue_status' | 'notification';
+    userId: string;
+    timestamp: string;
+    data: any;
+  }
+
+  // WebSocket client tracking
+  const wsClients = new Map<string, Set<WebSocket>>();
+
   wss.on('connection', (ws: WebSocket) => {
     console.log('WebSocket client connected');
+    let clientUserId: string | null = null;
+    
+    // Send initial connection acknowledgment
+    ws.send(JSON.stringify({
+      type: 'connection',
+      data: { connected: true, timestamp: new Date().toISOString() }
+    }));
     
     ws.on('message', (message) => {
       try {
@@ -1399,31 +1417,199 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Handle different types of WebSocket messages
         switch (data.type) {
           case 'subscribe':
-            // Subscribe to user-specific updates
-            (ws as any).userId = data.userId;
+            // Verify JWT token and extract user ID
+            const token = data.token;
+            if (!token) {
+              ws.send(JSON.stringify({
+                type: 'auth_error',
+                data: { message: 'Authentication token required', timestamp: new Date().toISOString() }
+              }));
+              ws.close(1008, 'Authentication token required');
+              return;
+            }
+
+            const payload = verifyToken(token);
+            if (!payload) {
+              ws.send(JSON.stringify({
+                type: 'auth_error',
+                data: { message: 'Invalid authentication token', timestamp: new Date().toISOString() }
+              }));
+              ws.close(1008, 'Invalid authentication token');
+              return;
+            }
+
+            // Use verified user ID from JWT token, not from client data
+            clientUserId = payload.userId;
+            (ws as any).userId = payload.userId;
+            
+            // Track client connection for user
+            if (!wsClients.has(payload.userId)) {
+              wsClients.set(payload.userId, new Set());
+            }
+            wsClients.get(payload.userId)!.add(ws);
+            
+            console.log(`WebSocket client authenticated and subscribed for user: ${payload.userId} (${payload.email})`);
+            
+            // Send initial status update
+            ws.send(JSON.stringify({
+              type: 'subscription_confirmed',
+              data: {
+                userId: payload.userId,
+                timestamp: new Date().toISOString(),
+                activeConnections: wsClients.get(payload.userId)!.size
+              }
+            }));
             break;
             
           case 'ping':
-            ws.send(JSON.stringify({ type: 'pong' }));
+            ws.send(JSON.stringify({ 
+              type: 'pong', 
+              timestamp: new Date().toISOString() 
+            }));
+            break;
+
+          case 'request_status':
+            // Send current status for user's jobs, rate limits, etc.
+            if (clientUserId) {
+              broadcastUserStatus(clientUserId);
+            }
             break;
         }
       } catch (error) {
         console.error('WebSocket message error:', error);
+        ws.send(JSON.stringify({
+          type: 'error',
+          data: { message: 'Invalid message format', timestamp: new Date().toISOString() }
+        }));
       }
     });
 
     ws.on('close', () => {
       console.log('WebSocket client disconnected');
+      
+      // Remove client from tracking
+      if (clientUserId && wsClients.has(clientUserId)) {
+        wsClients.get(clientUserId)!.delete(ws);
+        if (wsClients.get(clientUserId)!.size === 0) {
+          wsClients.delete(clientUserId);
+        }
+      }
+    });
+
+    ws.on('error', (error) => {
+      console.error('WebSocket client error:', error);
     });
   });
 
-  // Function to broadcast updates to specific users
-  global.broadcastToUser = (userId: string, data: any) => {
+  // Enhanced broadcasting functions
+  const broadcastToUser = (userId: string, event: Omit<WebSocketEvent, 'userId' | 'timestamp'>) => {
+    const fullEvent: WebSocketEvent = {
+      ...event,
+      userId,
+      timestamp: new Date().toISOString()
+    };
+
+    const userClients = wsClients.get(userId);
+    if (userClients) {
+      const eventData = JSON.stringify(fullEvent);
+      userClients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          try {
+            client.send(eventData);
+          } catch (error) {
+            console.error('Error sending WebSocket message:', error);
+            // Remove failed client
+            userClients.delete(client);
+          }
+        }
+      });
+    }
+  };
+
+  const broadcastToAll = (event: Omit<WebSocketEvent, 'userId' | 'timestamp'>) => {
+    const fullEvent = {
+      ...event,
+      userId: 'broadcast',
+      timestamp: new Date().toISOString()
+    };
+
+    const eventData = JSON.stringify(fullEvent);
     wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN && (client as any).userId === userId) {
-        client.send(JSON.stringify(data));
+      if (client.readyState === WebSocket.OPEN) {
+        try {
+          client.send(eventData);
+        } catch (error) {
+          console.error('Error broadcasting WebSocket message:', error);
+        }
       }
     });
+  };
+
+  // Function to send current status for a user
+  const broadcastUserStatus = async (userId: string) => {
+    try {
+      // Get current jobs status
+      const jobs = await storage.getUserJobs(userId);
+      const activeJobs = jobs.filter(job => ['pending', 'processing'].includes(job.status));
+      
+      broadcastToUser(userId, {
+        type: 'queue_status',
+        data: {
+          activeJobs: activeJobs.length,
+          totalJobs: jobs.length,
+          jobs: activeJobs.map(job => ({
+            id: job.id,
+            type: job.type,
+            status: job.status,
+            progress: job.progress || 0,
+            createdAt: job.createdAt,
+            scheduledFor: job.scheduledFor
+          }))
+        }
+      });
+
+      // Get marketplace health status
+      const { rateLimitService } = await import('./services/rateLimitService');
+      const marketplaces = ['ebay', 'poshmark', 'mercari', 'facebook', 'depop'];
+      const healthStatuses = await Promise.all(
+        marketplaces.map(async (marketplace) => {
+          try {
+            const status = await rateLimitService.getRateLimitStatus(marketplace);
+            return {
+              marketplace,
+              healthy: status.canMakeRequest,
+              hourlyRemaining: status.hourlyRemaining,
+              dailyRemaining: status.dailyRemaining,
+              estimatedDelay: status.estimatedDelay
+            };
+          } catch (error) {
+            return {
+              marketplace,
+              healthy: false,
+              error: error instanceof Error ? error.message : 'Unknown error'
+            };
+          }
+        })
+      );
+
+      broadcastToUser(userId, {
+        type: 'marketplace_health',
+        data: { marketplaces: healthStatuses }
+      });
+
+    } catch (error) {
+      console.error('Error broadcasting user status:', error);
+    }
+  };
+
+  // Global functions for other services to use
+  global.broadcastToUser = broadcastToUser;
+  global.broadcastToAll = broadcastToAll;
+  global.broadcastUserStatus = broadcastUserStatus;
+  
+  // Legacy function for backward compatibility
+  (global as any).broadcastToUserLegacy = (userId: string, data: any) => {
+    broadcastToUser(userId, { type: 'notification', data });
   };
 
   return httpServer;
