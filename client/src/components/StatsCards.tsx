@@ -14,8 +14,8 @@ export default function StatsCards() {
     {
       title: "Active Listings",
       value: userStats?.activeListings || 0,
-      change: "+12%",
-      changeLabel: "vs last month",
+      change: "--",
+      changeLabel: "no prior data",
       icon: "fas fa-list",
       iconColor: "text-primary",
       iconBg: "bg-primary/10",
@@ -24,8 +24,8 @@ export default function StatsCards() {
     {
       title: "Monthly Revenue",
       value: `$${userStats?.monthlyRevenue?.toFixed(2) || '0.00'}`,
-      change: "+24%",
-      changeLabel: "vs last month",
+      change: "--",
+      changeLabel: "no prior data",
       icon: "fas fa-dollar-sign",
       iconColor: "text-accent",
       iconBg: "bg-accent/10",
@@ -34,8 +34,8 @@ export default function StatsCards() {
     {
       title: "Total Sales",
       value: userStats?.totalSales || 0,
-      change: "+18%",
-      changeLabel: "vs last month",
+      change: "--",
+      changeLabel: "no prior data",
       icon: "fas fa-shopping-cart",
       iconColor: "text-secondary",
       iconBg: "bg-secondary/10",
@@ -44,8 +44,8 @@ export default function StatsCards() {
     {
       title: "Conversion Rate",
       value: `${userStats?.conversionRate?.toFixed(1) || '0.0'}%`,
-      change: "+5.2%",
-      changeLabel: "vs last month",
+      change: "--",
+      changeLabel: "no prior data",
       icon: "fas fa-percentage",
       iconColor: "text-chart-4",
       iconBg: "bg-chart-4/20",
