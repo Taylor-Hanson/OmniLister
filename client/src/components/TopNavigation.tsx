@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useWebSocket } from "@/contexts/WebSocketContext";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,15 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps) {
   const { user } = useAuth();
   const { isConnected } = useWebSocket();
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Fetch real notifications
+  const { data: notificationsData } = useQuery({
+    queryKey: ['/api/notifications'],
+    enabled: !!user,
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  const unreadCount = notificationsData?.unreadCount || 0;
 
   const handleVoiceRecording = () => {
     // TODO: Implement voice recording functionality
@@ -95,9 +105,11 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps) {
             data-testid="button-notifications"
           >
             <i className="fas fa-bell text-lg"></i>
-            <span className="absolute -top-1 -right-1 h-5 w-5 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
-              3
-            </span>
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 h-5 w-5 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
           </Button>
         </div>
       </div>
