@@ -307,16 +307,9 @@ export default function Analytics() {
                     decimals={2}
                   />
                   <div className="flex items-center mt-2">
-                    {overview?.totalRevenue > 0 ? (
-                      <>
-                        <ArrowUpRight className="h-4 w-4 text-green-500 mr-1" />
-                        <span className="text-xs text-green-500">
-                          +{((overview?.totalRevenue / 100) * 12).toFixed(1)}% vs last period
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No sales yet</span>
-                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {overview?.totalRevenue > 0 ? "-- vs last period (no prior data)" : "No sales yet"}
+                    </span>
                   </div>
                 </>
               )}
