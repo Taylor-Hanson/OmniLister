@@ -1120,6 +1120,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Notifications routes
+  app.get("/api/notifications", requireAuth, async (req, res) => {
+    try {
+      const notifications = [];
+      
+      // Get recent failed jobs as notifications
+      const failedJobs = await storage.getJobs(req.user!.id, { status: 'failed' });
+      const recentFailedJobs = failedJobs.filter(job => {
+        const createdAt = new Date(job.createdAt);
+        const now = new Date();
+        const hoursDiff = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+        return hoursDiff <= 24; // Last 24 hours
+      }).slice(0, 5);
+      
+      recentFailedJobs.forEach(job => {
+        notifications.push({
+          id: `job-${job.id}`,
+          type: 'error',
+          title: 'Job Failed',
+          message: `Failed to process ${job.type}: ${job.errorMessage || 'Unknown error'}`,
+          timestamp: job.createdAt,
+          read: false,
+          priority: 'high'
+        });
+      });
+      
+      // Get pending sync conflicts as notifications
+      const syncConflicts = await storage.getSyncConflicts(req.user!.id, false);
+      const recentConflicts = syncConflicts.filter(conflict => {
+        const createdAt = new Date(conflict.createdAt);
+        const now = new Date();
+        const hoursDiff = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+        return hoursDiff <= 72; // Last 3 days
+      }).slice(0, 3);
+      
+      recentConflicts.forEach(conflict => {
+        notifications.push({
+          id: `conflict-${conflict.id}`,
+          type: 'warning',
+          title: 'Sync Conflict',
+          message: `Sync conflict detected for listing: ${conflict.reason}`,
+          timestamp: conflict.createdAt,
+          read: false,
+          priority: 'medium'
+        });
+      });
+      
+      // Get recent successful sales as positive notifications
+      const recentAuditLogs = await storage.getAuditLogs(req.user!.id);
+      const salesLogs = recentAuditLogs.filter(log => 
+        log.action === 'sale_recorded' && 
+        new Date(log.createdAt).getTime() > (Date.now() - 24 * 60 * 60 * 1000)
+      ).slice(0, 2);
+      
+      salesLogs.forEach(log => {
+        const saleData = log.metadata || {};
+        notifications.push({
+          id: `sale-${log.id}`,
+          type: 'success',
+          title: 'Sale Recorded',
+          message: `Item sold for $${saleData.price || 'N/A'} on ${saleData.marketplace || 'marketplace'}`,
+          timestamp: log.createdAt,
+          read: false,
+          priority: 'medium'
+        });
+      });
+      
+      // Sort by timestamp (newest first) and limit to 10
+      notifications.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const limitedNotifications = notifications.slice(0, 10);
+      
+      res.json({
+        notifications: limitedNotifications,
+        unreadCount: limitedNotifications.filter(n => !n.read).length
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/notifications/:id/mark-read", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      // In a real implementation, you'd update the notification's read status in storage
+      // For now, we'll just return success since notifications are generated dynamically
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/notifications/mark-all-read", requireAuth, async (req, res) => {
+    try {
+      // In a real implementation, you'd mark all notifications as read for the user
+      // For now, we'll just return success since notifications are generated dynamically  
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Auto-Delist endpoints
   app.get("/api/auto-delist/rules", requireAuth, async (req, res) => {
     try {
