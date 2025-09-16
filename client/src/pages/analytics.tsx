@@ -461,7 +461,7 @@ export default function Analytics() {
               <CardContent>
                 {isLoading ? (
                   <Skeleton className="h-64 w-full" />
-                ) : (
+                ) : revenue?.timeSeries && revenue.timeSeries.length > 0 ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={revenue?.timeSeries || []}>
                       <CartesianGrid strokeDasharray="3 3" />
@@ -474,6 +474,14 @@ export default function Analytics() {
                       <Line type="monotone" dataKey="fees" stroke="#ef4444" strokeWidth={2} />
                     </LineChart>
                   </ResponsiveContainer>
+                ) : (
+                  <div className="h-64 flex items-center justify-center">
+                    <div className="text-center">
+                      <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-muted-foreground">No Sales Data</h3>
+                      <p className="text-sm text-muted-foreground">Start selling to see revenue trends over time</p>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -486,7 +494,7 @@ export default function Analytics() {
               <CardContent>
                 {isLoading ? (
                   <Skeleton className="h-64 w-full" />
-                ) : (
+                ) : revenue?.byMarketplace && revenue.byMarketplace.length > 0 ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
@@ -506,6 +514,14 @@ export default function Analytics() {
                       <Tooltip />
                     </PieChart>
                   </ResponsiveContainer>
+                ) : (
+                  <div className="h-64 flex items-center justify-center">
+                    <div className="text-center">
+                      <PieChartIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-muted-foreground">No Marketplace Data</h3>
+                      <p className="text-sm text-muted-foreground">Connect marketplaces and start selling to see revenue breakdown</p>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -518,7 +534,7 @@ export default function Analytics() {
               <CardContent>
                 {isLoading ? (
                   <Skeleton className="h-64 w-full" />
-                ) : (
+                ) : revenue?.byCategory && revenue.byCategory.length > 0 ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={revenue?.byCategory || []} layout="horizontal">
                       <CartesianGrid strokeDasharray="3 3" />
@@ -528,6 +544,14 @@ export default function Analytics() {
                       <Bar dataKey="revenue" fill="#3b82f6" />
                     </BarChart>
                   </ResponsiveContainer>
+                ) : (
+                  <div className="h-64 flex items-center justify-center">
+                    <div className="text-center">
+                      <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-muted-foreground">No Category Data</h3>
+                      <p className="text-sm text-muted-foreground">Start selling products to see revenue by category</p>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -635,7 +659,7 @@ export default function Analytics() {
               <CardContent>
                 {isLoading ? (
                   <Skeleton className="h-64 w-full" />
-                ) : (
+                ) : inventory?.turnoverByCategory && inventory.turnoverByCategory.length > 0 ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={inventory?.turnoverByCategory || []}>
                       <CartesianGrid strokeDasharray="3 3" />
@@ -646,6 +670,14 @@ export default function Analytics() {
                       <Bar dataKey="turnoverRate" fill="#10b981" name="Turnover Rate" />
                     </BarChart>
                   </ResponsiveContainer>
+                ) : (
+                  <div className="h-64 flex items-center justify-center">
+                    <div className="text-center">
+                      <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-muted-foreground">No Inventory Data</h3>
+                      <p className="text-sm text-muted-foreground">Add inventory to track turnover by category</p>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -827,7 +859,7 @@ export default function Analytics() {
               <CardContent>
                 {isLoading ? (
                   <Skeleton className="h-64 w-full" />
-                ) : (
+                ) : forecast?.forecast && forecast.forecast.length > 0 ? (
                   <ResponsiveContainer width="100%" height={300}>
                     <AreaChart data={forecast?.forecast || []}>
                       <defs>
@@ -843,6 +875,14 @@ export default function Analytics() {
                       <Area type="monotone" dataKey="predictedSales" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorSales)" />
                     </AreaChart>
                   </ResponsiveContainer>
+                ) : (
+                  <div className="h-64 flex items-center justify-center">
+                    <div className="text-center">
+                      <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-muted-foreground">No Forecast Data</h3>
+                      <p className="text-sm text-muted-foreground">Need sales history to generate forecasts</p>
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>
