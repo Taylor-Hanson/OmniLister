@@ -2280,8 +2280,7 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(automationSchedules.isActive, true),
         eq(automationRules.isEnabled, true)
-      ))
-      .orderBy(automationSchedules.nextScheduledAt);
+      ));
 
     // Return schedules with rule attached
     return results.map(r => ({ ...r.schedule, rule: r.rule })) as any;
