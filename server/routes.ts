@@ -438,6 +438,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // eBay Constants endpoint for frontend
+  app.get("/api/ebay/constants", async (req, res) => {
+    try {
+      const { EBAY_CONDITIONS, LISTING_FORMATS, LISTING_DURATIONS } = await import("@shared/schema");
+      res.json({
+        conditions: EBAY_CONDITIONS,
+        listingFormats: LISTING_FORMATS,
+        listingDurations: LISTING_DURATIONS
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Listing routes
   app.get("/api/listings", requireAuth, async (req, res) => {
     try {
@@ -475,7 +489,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const listingData = insertListingSchema.parse(req.body);
+      // Parse and validate the request body with enhanced eBay field processing
+      const rawData = req.body;
+      
+      // Process condition mapping - if condition is provided without conditionId, auto-map it
+      if (rawData.condition && !rawData.conditionId) {
+        const { EBAY_CONDITIONS } = await import("@shared/schema");
+        const conditionInfo = Object.values(EBAY_CONDITIONS).find(c => c.value === rawData.condition);
+        if (conditionInfo) {
+          rawData.conditionId = conditionInfo.id;
+        }
+      }
+
+      // Process numeric fields with proper coercion
+      if (rawData.price && typeof rawData.price === 'string') {
+        rawData.price = parseFloat(rawData.price);
+      }
+      if (rawData.packageWeight && typeof rawData.packageWeight === 'string') {
+        rawData.packageWeight = parseFloat(rawData.packageWeight);
+      }
+      if (rawData.startPrice && typeof rawData.startPrice === 'string') {
+        rawData.startPrice = parseFloat(rawData.startPrice);
+      }
+      if (rawData.reservePrice && typeof rawData.reservePrice === 'string') {
+        rawData.reservePrice = parseFloat(rawData.reservePrice);
+      }
+      if (rawData.buyItNowPrice && typeof rawData.buyItNowPrice === 'string') {
+        rawData.buyItNowPrice = parseFloat(rawData.buyItNowPrice);
+      }
+
+      // Normalize itemSpecifics to ensure consistent structure
+      if (rawData.itemSpecifics && Array.isArray(rawData.itemSpecifics)) {
+        rawData.itemSpecifics = rawData.itemSpecifics.filter(spec => spec.name && spec.value);
+      }
+
+      const listingData = insertListingSchema.parse(rawData);
       const listing = await storage.createListing(req.user!.id, listingData);
       
       // Increment usage counter
@@ -483,6 +531,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(listing);
     } catch (error: any) {
+      console.error('Error creating listing:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          error: "Validation error", 
+          details: error.errors.map((e: any) => ({
+            field: e.path.join('.'),
+            message: e.message
+          }))
+        });
+      }
       res.status(400).json({ error: error.message });
     }
   });
@@ -494,10 +552,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Listing not found" });
       }
 
-      const updates = insertListingSchema.partial().parse(req.body);
+      // Process the request body with the same eBay field enhancements
+      const rawData = req.body;
+      
+      // Process condition mapping - if condition is provided without conditionId, auto-map it
+      if (rawData.condition && !rawData.conditionId) {
+        const { EBAY_CONDITIONS } = await import("@shared/schema");
+        const conditionInfo = Object.values(EBAY_CONDITIONS).find(c => c.value === rawData.condition);
+        if (conditionInfo) {
+          rawData.conditionId = conditionInfo.id;
+        }
+      }
+
+      // Process numeric fields with proper coercion
+      if (rawData.price && typeof rawData.price === 'string') {
+        rawData.price = parseFloat(rawData.price);
+      }
+      if (rawData.packageWeight && typeof rawData.packageWeight === 'string') {
+        rawData.packageWeight = parseFloat(rawData.packageWeight);
+      }
+      if (rawData.startPrice && typeof rawData.startPrice === 'string') {
+        rawData.startPrice = parseFloat(rawData.startPrice);
+      }
+      if (rawData.reservePrice && typeof rawData.reservePrice === 'string') {
+        rawData.reservePrice = parseFloat(rawData.reservePrice);
+      }
+      if (rawData.buyItNowPrice && typeof rawData.buyItNowPrice === 'string') {
+        rawData.buyItNowPrice = parseFloat(rawData.buyItNowPrice);
+      }
+
+      // Normalize itemSpecifics to ensure consistent structure
+      if (rawData.itemSpecifics && Array.isArray(rawData.itemSpecifics)) {
+        rawData.itemSpecifics = rawData.itemSpecifics.filter(spec => spec.name && spec.value);
+      }
+
+      const updates = insertListingSchema.partial().parse(rawData);
       const updatedListing = await storage.updateListing(req.params.id, updates);
       res.json(updatedListing);
     } catch (error: any) {
+      console.error('Error updating listing:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          error: "Validation error", 
+          details: error.errors.map((e: any) => ({
+            field: e.path.join('.'),
+            message: e.message
+          }))
+        });
+      }
       res.status(400).json({ error: error.message });
     }
   });
