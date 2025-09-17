@@ -98,20 +98,20 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
             
             return (
-              <Link key={item.href} href={item.href}>
-                <a
-                  className={cn(
-                    "group flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors",
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                  onClick={onClose}
-                  data-testid={item.testId}
-                >
-                  <i className={cn(item.icon, "mr-3 text-sm")}></i>
-                  {item.label}
-                </a>
+              <Link 
+                key={item.href} 
+                href={item.href}
+                className={cn(
+                  "group flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors",
+                  isActive
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+                onClick={onClose}
+                data-testid={item.testId}
+              >
+                <i className={cn(item.icon, "mr-3 text-sm")}></i>
+                {item.label}
               </Link>
             );
           })}
