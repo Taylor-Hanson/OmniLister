@@ -27,6 +27,12 @@ export default function MarketplaceStatus() {
     enabled: !!user,
   });
 
+  // Get actual listings to count per marketplace
+  const { data: listings = [] } = useQuery({
+    queryKey: ['/api/listings'],
+    enabled: !!user,
+  });
+
   const refreshConnectionsMutation = useMutation({
     mutationFn: async () => {
       // Refresh all marketplace connections
@@ -173,7 +179,11 @@ export default function MarketplaceStatus() {
                         {marketplace.marketplace}
                       </h3>
                       <p className="text-xs text-muted-foreground">
-                        {marketplace.connection ? '147 listings' : 'Not connected'}
+                        {marketplace.connection ? 
+                          `${listings.filter((listing: any) => 
+                            listing.posts?.some((post: any) => post.marketplace === marketplace.marketplace)
+                          ).length} listings` 
+                          : 'Not connected'}
                       </p>
                     </div>
                   </div>
