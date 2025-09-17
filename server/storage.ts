@@ -760,15 +760,13 @@ export class MemStorage implements IStorage {
       maxAttempts: 3,
       startedAt: null,
       completedAt: null,
-      data: job.data || {},
-      scheduledFor: job.scheduledFor || null,
-      priority: job.priority || 5,
-      dependencies: job.dependencies || null,
-      marketplaceConfig: job.marketplaceConfig || null,
-      rateLimitConfig: job.rateLimitConfig || null,
-      retryConfig: job.retryConfig || null,
-      optimizationData: job.optimizationData || null,
-      schedulingMetadata: job.schedulingMetadata || {},
+      data: job.data || null,
+      scheduledFor: job.scheduledFor || new Date(),
+      smartScheduled: job.smartScheduled || false,
+      originalScheduledFor: job.originalScheduledFor || null,
+      marketplaceGroup: job.marketplaceGroup || null,
+      priority: job.priority || 0,
+      schedulingMetadata: job.schedulingMetadata || null,
       createdAt: new Date(),
     };
     this.jobs.set(id, newJob);
@@ -840,6 +838,10 @@ export class MemStorage implements IStorage {
       ...settings,
       id,
       userId,
+      autoSync: settings.autoSync || false,
+      syncFrequency: settings.syncFrequency || "manual",
+      syncFields: settings.syncFields || null,
+      defaultBehavior: settings.defaultBehavior || null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -860,7 +862,7 @@ export class MemStorage implements IStorage {
   async getSyncRules(userId: string): Promise<SyncRule[]> {
     return Array.from(this.syncRules.values())
       .filter(rule => rule.userId === userId)
-      .sort((a, b) => a.priority - b.priority);
+      .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
   }
 
   async getSyncRule(id: string): Promise<SyncRule | undefined> {
@@ -921,7 +923,7 @@ export class MemStorage implements IStorage {
       conflicts = conflicts.filter(conflict => resolved ? conflict.resolvedAt !== null : conflict.resolvedAt === null);
     }
     
-    return conflicts.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return conflicts.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
   }
 
   async getSyncConflict(id: string): Promise<SyncConflict | undefined> {
@@ -975,6 +977,9 @@ export class MemStorage implements IStorage {
       ...insertRule,
       id,
       userId,
+      enabled: insertRule.enabled ?? true,
+      marketplaces: insertRule.marketplaces || null,
+      listingIds: insertRule.listingIds || null,
       lastExecutedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -1015,6 +1020,8 @@ export class MemStorage implements IStorage {
       ...insertHistory,
       id,
       userId,
+      listingId: insertHistory.listingId || null,
+      ruleId: insertHistory.ruleId || null,
       delistedAt: new Date(),
     };
     this.autoDelistHistory.set(id, history);
@@ -1119,7 +1126,7 @@ export class MemStorage implements IStorage {
       profit: event.profit || null,
       eventData: event.eventData || {},
       revenue: event.revenue || null,
-      timestamp: event.timestamp || new Date(),
+      timestamp: new Date(),
       createdAt: new Date(),
     };
     this.analyticsEvents.set(id, analyticsEvent);
@@ -1136,13 +1143,23 @@ export class MemStorage implements IStorage {
       events = events.filter(event => event.marketplace === filters.marketplace);
     }
     if (filters?.startDate) {
-      events = events.filter(event => new Date(event.timestamp) >= filters.startDate!);
+      events = events.filter(event => {
+        const eventTime = event.timestamp ? new Date(event.timestamp) : new Date(event.createdAt);
+        return eventTime >= filters.startDate!;
+      });
     }
     if (filters?.endDate) {
-      events = events.filter(event => new Date(event.timestamp) <= filters.endDate!);
+      events = events.filter(event => {
+        const eventTime = event.timestamp ? new Date(event.timestamp) : new Date(event.createdAt);
+        return eventTime <= filters.endDate!;
+      });
     }
     
-    return events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    return events.sort((a, b) => {
+      const aTime = a.timestamp ? new Date(a.timestamp).getTime() : new Date(a.createdAt).getTime();
+      const bTime = b.timestamp ? new Date(b.timestamp).getTime() : new Date(b.createdAt).getTime();
+      return bTime - aTime;
+    });
   }
 
   // Sales Metrics methods
@@ -1152,6 +1169,11 @@ export class MemStorage implements IStorage {
       ...metrics,
       id,
       userId,
+      listingId: metrics.listingId || null,
+      margin: metrics.margin || null,
+      daysToSell: metrics.daysToSell || null,
+      category: metrics.category || null,
+      brand: metrics.brand || null,
       soldAt: new Date(),
     };
     this.salesMetrics.set(id, salesMetrics);
@@ -1168,13 +1190,23 @@ export class MemStorage implements IStorage {
       metrics = metrics.filter(metric => metric.category === filters.category);
     }
     if (filters?.startDate) {
-      metrics = metrics.filter(metric => new Date(metric.soldAt) >= filters.startDate!);
+      metrics = metrics.filter(metric => {
+        const soldTime = metric.soldAt ? new Date(metric.soldAt) : new Date();
+        return soldTime >= filters.startDate!;
+      });
     }
     if (filters?.endDate) {
-      metrics = metrics.filter(metric => new Date(metric.soldAt) <= filters.endDate!);
+      metrics = metrics.filter(metric => {
+        const soldTime = metric.soldAt ? new Date(metric.soldAt) : new Date();
+        return soldTime <= filters.endDate!;
+      });
     }
     
-    return metrics.sort((a, b) => new Date(b.soldAt).getTime() - new Date(a.soldAt).getTime());
+    return metrics.sort((a, b) => {
+      const aTime = a.soldAt ? new Date(a.soldAt).getTime() : 0;
+      const bTime = b.soldAt ? new Date(b.soldAt).getTime() : 0;
+      return bTime - aTime;
+    });
   }
 
   // Inventory Metrics methods
@@ -1184,7 +1216,13 @@ export class MemStorage implements IStorage {
       ...metrics,
       id,
       userId,
+      listingId: metrics.listingId || null,
+      costOfGoods: metrics.costOfGoods || null,
       listDate: metrics.listDate || new Date(),
+      ageInDays: metrics.ageInDays || 0,
+      turnoverRate: metrics.turnoverRate || null,
+      category: metrics.category || null,
+      status: metrics.status || null,
       updatedAt: new Date(),
     };
     this.inventoryMetrics.set(id, inventoryMetrics);
@@ -1201,7 +1239,11 @@ export class MemStorage implements IStorage {
       metrics = metrics.filter(metric => metric.category === filters.category);
     }
     
-    return metrics.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return metrics.sort((a, b) => {
+      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      return bTime - aTime;
+    });
   }
 
   async updateInventoryMetrics(id: string, updates: Partial<InventoryMetrics>): Promise<InventoryMetrics> {
@@ -1237,7 +1279,11 @@ export class MemStorage implements IStorage {
       metrics = metrics.filter(metric => metric.period === filters.period);
     }
     
-    return metrics.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return metrics.sort((a, b) => {
+      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      return bTime - aTime;
+    });
   }
 
   async updateMarketplaceMetrics(id: string, updates: Partial<MarketplaceMetrics>): Promise<MarketplaceMetrics> {
@@ -1723,56 +1769,6 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
-  // Fix missing canCreateListing method that got corrupted
-  async canCreateListing(userId: string): Promise<boolean> {
-    const user = await this.getUser(userId);
-    if (!user) return false;
-    
-    // Check and reset billing cycle if needed
-    await this.checkAndResetBillingCycle(userId);
-    
-    // Unlimited plan has no limits
-    if (user.plan === 'unlimited' || user.listingCredits === null) {
-      return true;
-    }
-    
-    // Check if user has credits remaining
-    return (user.listingsUsedThisMonth || 0) < (user.listingCredits || 10);
-  }
-
-  async incrementListingUsage(userId: string): Promise<void> {
-    const user = await this.getUser(userId);
-    if (!user) return;
-    
-    await this.updateUser(userId, {
-      listingsUsedThisMonth: (user.listingsUsedThisMonth || 0) + 1
-    });
-  }
-
-  async resetMonthlyUsage(userId: string): Promise<void> {
-    await this.updateUser(userId, {
-      listingsUsedThisMonth: 0,
-      billingCycleStart: new Date()
-    });
-  }
-
-  async checkAndResetBillingCycle(userId: string): Promise<void> {
-    const user = await this.getUser(userId);
-    if (!user) return;
-    
-    const cycleStart = user.billingCycleStart || new Date();
-    const now = new Date();
-    const monthsSince = (now.getFullYear() - cycleStart.getFullYear()) * 12 + 
-                       (now.getMonth() - cycleStart.getMonth());
-    
-    // Reset if a month has passed
-    if (monthsSince >= 1) {
-      await this.resetMonthlyUsage(userId);
-    }
-  }
-
-  // Smart Scheduling method implementations
-  
   // Marketplace Posting Rules methods
   async getMarketplacePostingRules(marketplace?: string): Promise<MarketplacePostingRules[]> {
     let rules = Array.from(this.marketplacePostingRules.values());
@@ -2578,100 +2574,6 @@ export class MemStorage implements IStorage {
       }
       return 0;
     });
-  }
-
-  // Rate Limit Tracker methods
-  async getRateLimitTracker(marketplace: string, windowType: string): Promise<RateLimitTracker | undefined> {
-    return Array.from(this.rateLimitTrackers.values()).find(tracker => 
-      tracker.marketplace === marketplace && tracker.windowType === windowType
-    );
-  }
-
-  async createRateLimitTracker(tracker: InsertRateLimitTracker): Promise<RateLimitTracker> {
-    const id = randomUUID();
-    const rateLimitTracker: RateLimitTracker = {
-      ...tracker,
-      id,
-      createdAt: new Date(),
-    };
-    this.rateLimitTrackers.set(id, rateLimitTracker);
-    return rateLimitTracker;
-  }
-
-  async updateRateLimitTracker(id: string, updates: Partial<RateLimitTracker>): Promise<RateLimitTracker> {
-    const tracker = this.rateLimitTrackers.get(id);
-    if (!tracker) {
-      throw new Error('Rate limit tracker not found');
-    }
-    const updated = { ...tracker, ...updates };
-    this.rateLimitTrackers.set(id, updated);
-    return updated;
-  }
-
-  async getCurrentRateLimits(marketplaces: string[]): Promise<Record<string, RateLimitTracker | null>> {
-    const rateLimits: Record<string, RateLimitTracker | null> = {};
-    const now = new Date();
-    
-    for (const marketplace of marketplaces) {
-      // Get most recent hourly rate limit for this marketplace
-      const hourlyTracker = Array.from(this.rateLimitTrackers.values())
-        .filter(tracker => 
-          tracker.marketplace === marketplace && 
-          tracker.windowType === 'hourly' &&
-          tracker.timeWindow.getTime() <= now.getTime()
-        )
-        .sort((a, b) => new Date(b.timeWindow).getTime() - new Date(a.timeWindow).getTime())[0];
-      
-      rateLimits[marketplace] = hourlyTracker || null;
-    }
-    
-    return rateLimits;
-  }
-
-  // Queue Distribution methods
-  async getQueueDistribution(timeSlot: Date, marketplace?: string): Promise<QueueDistribution[]> {
-    let distributions = Array.from(this.queueDistributions.values())
-      .filter(dist => dist.timeSlot.getTime() === timeSlot.getTime());
-    
-    if (marketplace) {
-      distributions = distributions.filter(dist => dist.marketplace === marketplace);
-    }
-    
-    return distributions.filter(dist => dist.isAvailable);
-  }
-
-  async createQueueDistribution(distribution: InsertQueueDistribution): Promise<QueueDistribution> {
-    const id = randomUUID();
-    const queueDistribution: QueueDistribution = {
-      ...distribution,
-      id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    this.queueDistributions.set(id, queueDistribution);
-    return queueDistribution;
-  }
-
-  async updateQueueDistribution(id: string, updates: Partial<QueueDistribution>): Promise<QueueDistribution> {
-    const distribution = this.queueDistributions.get(id);
-    if (!distribution) {
-      throw new Error('Queue distribution not found');
-    }
-    const updated = { ...distribution, ...updates, updatedAt: new Date() };
-    this.queueDistributions.set(id, updated);
-    return updated;
-  }
-
-  async getAvailableTimeSlots(marketplace: string, startTime: Date, endTime: Date): Promise<QueueDistribution[]> {
-    return Array.from(this.queueDistributions.values())
-      .filter(dist => 
-        dist.marketplace === marketplace &&
-        dist.isAvailable &&
-        dist.timeSlot >= startTime &&
-        dist.timeSlot <= endTime &&
-        dist.scheduledJobs < dist.maxCapacity
-      )
-      .sort((a, b) => a.timeSlot.getTime() - b.timeSlot.getTime());
   }
 
   // Job Retry History methods
@@ -3775,7 +3677,7 @@ export class MemStorage implements IStorage {
       queue = queue.filter(entry => entry.status === filters.status);
     }
     
-    return queue.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+    return queue.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
   }
 
   async getBatchQueueEntry(batchId: string): Promise<BatchQueue | undefined> {
@@ -3818,7 +3720,7 @@ export class MemStorage implements IStorage {
 
   async getNextBatchForProcessing(): Promise<BatchQueue | undefined> {
     const queue = await this.getBatchQueue({ status: 'queued' });
-    return queue.sort((a, b) => (a.priority || 0) - (b.priority || 0))[0];
+    return queue.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0))[0];
   }
 
   async updateQueuePositions(): Promise<void> {

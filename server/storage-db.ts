@@ -103,35 +103,40 @@ export class DatabaseStorage implements IStorage {
 
   // Job methods
   async getUserJobs(userId: string, filters?: { status?: string; type?: string }): Promise<Job[]> {
-    let query = db.select().from(jobs).where(eq(jobs.userId, userId));
+    const conditions = [eq(jobs.userId, userId)];
     
     if (filters?.status) {
-      query = query.where(eq(jobs.status, filters.status));
+      conditions.push(eq(jobs.status, filters.status));
     }
     if (filters?.type) {
-      query = query.where(eq(jobs.type, filters.type));
+      conditions.push(eq(jobs.type, filters.type));
     }
     
-    const results = await query.orderBy(desc(jobs.createdAt));
+    const results = await db
+      .select()
+      .from(jobs)
+      .where(and(...conditions))
+      .orderBy(desc(jobs.createdAt));
     return results;
   }
 
   // Performance Analytics methods
-  async getPerformanceByTimeSlot(userId: string, marketplace?: string): Promise<Array<{
-    timeSlot: string;
+  async getPerformanceByTimeSlot(userId: string, marketplace?: string, category?: string): Promise<Array<{
+    dayOfWeek: number;
+    hourOfDay: number;
     avgSuccessScore: number;
-    totalPosts: number;
+    avgEngagement: number;
+    conversionRate: number;
     sampleSize: number;
   }>> {
     // Mock implementation for now - in real implementation this would query analytics
     return [];
   }
 
-  async getPerformanceByPriceRange(userId: string, marketplace?: string): Promise<Array<{
+  async getPerformanceByPriceRange(userId: string, marketplace?: string, category?: string): Promise<Array<{
     priceRange: string;
     avgSuccessScore: number;
     conversionRate: number;
-    totalListings: number;
     avgDaysToSell: number;
     sampleSize: number;
   }>> {
@@ -139,7 +144,7 @@ export class DatabaseStorage implements IStorage {
     return [];
   }
 
-  async getPerformanceByCategory(userId: string, marketplace?: string): Promise<Array<{
+  async getCategoryPerformance(userId: string, marketplace?: string): Promise<Array<{
     category: string;
     avgSuccessScore: number;
     conversionRate: number;
@@ -235,13 +240,23 @@ export class DatabaseStorage implements IStorage {
     marketplace?: string;
     canReschedule?: boolean;
   }): Promise<Job[]> {
-    let query = db.select().from(jobs).where(eq(jobs.userId, userId));
+    const conditions = [eq(jobs.userId, userId)];
     
     if (filters?.status) {
-      query = query.where(eq(jobs.status, filters.status));
+      conditions.push(eq(jobs.status, filters.status));
+    }
+    if (filters?.scheduledAfter) {
+      conditions.push(gte(jobs.scheduledFor, filters.scheduledAfter));
+    }
+    if (filters?.scheduledBefore) {
+      conditions.push(lte(jobs.scheduledFor, filters.scheduledBefore));
     }
     
-    const results = await query.orderBy(desc(jobs.createdAt));
+    const results = await db
+      .select()
+      .from(jobs)
+      .where(and(...conditions))
+      .orderBy(desc(jobs.createdAt));
     return results;
   }
 
@@ -293,13 +308,16 @@ export class DatabaseStorage implements IStorage {
 
   // Listing methods
   async getListings(userId: string, filters?: { status?: string; marketplace?: string }): Promise<Listing[]> {
-    let query = db.select().from(listings).where(eq(listings.userId, userId));
+    const conditions = [eq(listings.userId, userId)];
     
     if (filters?.status) {
-      query = query.where(eq(listings.status, filters.status));
+      conditions.push(eq(listings.status, filters.status));
     }
     
-    return await query;
+    return await db
+      .select()
+      .from(listings)
+      .where(and(...conditions));
   }
 
   async getListing(id: string): Promise<Listing | undefined> {
@@ -490,9 +508,9 @@ export class DatabaseStorage implements IStorage {
     const user = await this.getUser(userId);
     if (!user) return false;
     
-    if (user.plan === "unlimited") return true;
+    if (user.plan === "unlimited" || user.listingCredits === null) return true;
     
-    return user.listingsUsedThisMonth < user.listingCredits;
+    return (user.listingsUsedThisMonth ?? 0) < (user.listingCredits ?? 0);
   }
 
   async incrementListingUsage(userId: string): Promise<void> {
@@ -500,7 +518,7 @@ export class DatabaseStorage implements IStorage {
     if (!user) throw new Error("User not found");
     
     await this.updateUser(userId, {
-      listingsUsedThisMonth: user.listingsUsedThisMonth + 1,
+      listingsUsedThisMonth: (user.listingsUsedThisMonth ?? 0) + 1,
     });
   }
 
@@ -618,17 +636,21 @@ export class DatabaseStorage implements IStorage {
 
   // Sync Conflict methods
   async getSyncConflicts(userId: string, resolved?: boolean): Promise<SyncConflict[]> {
-    let query = db.select().from(syncConflicts).where(eq(syncConflicts.userId, userId));
+    const conditions = [eq(syncConflicts.userId, userId)];
     
     if (resolved !== undefined) {
       if (resolved) {
-        query = query.where(isNotNull(syncConflicts.resolvedAt));
+        conditions.push(isNotNull(syncConflicts.resolvedAt));
       } else {
-        query = query.where(isNull(syncConflicts.resolvedAt));
+        conditions.push(isNull(syncConflicts.resolvedAt));
       }
     }
     
-    return await query.orderBy(desc(syncConflicts.createdAt));
+    return await db
+      .select()
+      .from(syncConflicts)
+      .where(and(...conditions))
+      .orderBy(desc(syncConflicts.createdAt));
   }
 
   async getSyncConflict(id: string): Promise<SyncConflict | undefined> {
