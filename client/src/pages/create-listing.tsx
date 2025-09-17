@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, Minus, HelpCircle, Tag, Store, Search } from "lucide-react";
+import { Plus, Minus, HelpCircle, Tag, Store, Search, AlertCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { SiShopify } from "react-icons/si";
 
@@ -954,8 +954,8 @@ export default function CreateListing() {
                   </CardContent>
                 </Card>
 
-                {/* Shopify-specific Fields */}
-                {selectedMarketplaces.includes("shopify") && (
+                {/* Shopify-specific Fields - Temporarily disabled due to schema mismatch */}
+                {false && selectedMarketplaces.includes("shopify") && (
                   <Card>
                     <CardHeader>
                       <div className="flex items-center gap-2">
