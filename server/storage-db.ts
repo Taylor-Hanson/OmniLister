@@ -52,6 +52,10 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async getUserById(id: string): Promise<User | undefined> {
+    return this.getUser(id);
+  }
+
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user || undefined;
@@ -95,6 +99,150 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserStripeInfo(id: string, stripeCustomerId: string, stripeSubscriptionId: string): Promise<User> {
     return this.updateUser(id, { stripeCustomerId, stripeSubscriptionId });
+  }
+
+  // Job methods
+  async getUserJobs(userId: string, filters?: { status?: string; type?: string }): Promise<Job[]> {
+    let query = db.select().from(jobs).where(eq(jobs.userId, userId));
+    
+    if (filters?.status) {
+      query = query.where(eq(jobs.status, filters.status));
+    }
+    if (filters?.type) {
+      query = query.where(eq(jobs.type, filters.type));
+    }
+    
+    const results = await query.orderBy(desc(jobs.createdAt));
+    return results;
+  }
+
+  // Performance Analytics methods
+  async getPerformanceByTimeSlot(userId: string, marketplace?: string): Promise<Array<{
+    timeSlot: string;
+    avgSuccessScore: number;
+    totalPosts: number;
+    sampleSize: number;
+  }>> {
+    // Mock implementation for now - in real implementation this would query analytics
+    return [];
+  }
+
+  async getPerformanceByPriceRange(userId: string, marketplace?: string): Promise<Array<{
+    priceRange: string;
+    avgSuccessScore: number;
+    conversionRate: number;
+    totalListings: number;
+    avgDaysToSell: number;
+    sampleSize: number;
+  }>> {
+    // Mock implementation for now - in real implementation this would query analytics
+    return [];
+  }
+
+  async getPerformanceByCategory(userId: string, marketplace?: string): Promise<Array<{
+    category: string;
+    avgSuccessScore: number;
+    conversionRate: number;
+    avgEngagement: number;
+    totalPosts: number;
+    salesCount: number;
+  }>> {
+    // Mock implementation for now - in real implementation this would query analytics
+    return [];
+  }
+
+  async getMarketplacePerformanceSummary(userId: string): Promise<Array<{
+    marketplace: string;
+    avgSuccessScore: number;
+    conversionRate: number;
+    avgEngagement: number;
+    totalPosts: number;
+    salesCount: number;
+    lastPostDate: Date | null;
+  }>> {
+    // Mock implementation for now - in real implementation this would query analytics
+    return [];
+  }
+
+  async getEngagementCorrelations(userId: string, marketplace?: string): Promise<Array<{
+    variable1: string;
+    variable2: string;
+    correlation: number;
+    sampleSize: number;
+  }>> {
+    // Mock implementation for now - in real implementation this would query analytics
+    return [];
+  }
+
+  async getTimeSeriesData(userId: string, metric: string, groupBy: 'day' | 'week' | 'month', marketplace?: string, category?: string): Promise<Array<{
+    date: string;
+    value: number;
+    count: number;
+  }>> {
+    // Mock implementation for now - in real implementation this would query analytics
+    return [];
+  }
+
+  async getSeasonalPatterns(userId: string, marketplace?: string): Promise<Array<{
+    month: number;
+    dayOfWeek: number;
+    avgPerformance: number;
+    sampleSize: number;
+  }>> {
+    // Mock implementation for now - in real implementation this would query analytics
+    return [];
+  }
+
+  async getListingsWithLowPerformance(userId: string, threshold: number = 30): Promise<Array<{
+    listingId: string;
+    title: string;
+    category: string;
+    avgSuccessScore: number;
+    daysSinceListed: number;
+    lastEngagement: Date | null;
+    suggestedActions: string[];
+  }>> {
+    // Mock implementation for now - in real implementation this would query analytics
+    return [];
+  }
+
+  async getOptimizationOpportunities(userId: string): Promise<Array<{
+    type: 'timing' | 'pricing' | 'marketplace' | 'content';
+    priority: 'high' | 'medium' | 'low';
+    description: string;
+    potentialImprovement: number;
+    confidence: number;
+    targetListings: number;
+  }>> {
+    // Mock implementation for now - in real implementation this would query analytics
+    return [];
+  }
+
+  async getPerformanceTrends(userId: string, days: number, marketplace?: string): Promise<{
+    trend: 'increasing' | 'decreasing' | 'stable';
+    strength: number;
+    changePercent: number;
+    confidence: number;
+  }> {
+    // Mock implementation for now - in real implementation this would query analytics
+    return { trend: 'stable', strength: 0, changePercent: 0, confidence: 0 };
+  }
+
+  async getJobsForOptimization(userId: string, filters?: {
+    status?: string;
+    scheduledAfter?: Date;
+    scheduledBefore?: Date;
+    marketplace?: string;
+    canReschedule?: boolean;
+  }): Promise<Job[]> {
+    let query = db.select().from(jobs).where(eq(jobs.userId, userId));
+    
+    if (filters?.status) {
+      query = query.where(eq(jobs.status, filters.status));
+    }
+    
+    const results = await query.orderBy(desc(jobs.createdAt));
+    return results;
   }
 
   // Marketplace Connection methods

@@ -503,6 +503,14 @@ export class MemStorage implements IStorage {
   private failureCategories: Map<string, FailureCategory> = new Map();
   private marketplaceRetryConfig: Map<string, MarketplaceRetryConfig> = new Map();
 
+  // Batch storage
+  private batches: Map<string, Batch> = new Map();
+  private batchItems: Map<string, BatchItem> = new Map();
+  private bulkUploads: Map<string, BulkUpload> = new Map();
+  private batchTemplates: Map<string, BatchTemplate> = new Map();
+  private batchAnalytics: Map<string, BatchAnalytics> = new Map();
+  private batchQueue: Map<string, BatchQueue> = new Map();
+
   // Cross-Platform Sync storage
   private crossPlatformSyncJobs: Map<string, CrossPlatformSyncJob> = new Map();
   private crossPlatformSyncHistory: Map<string, CrossPlatformSyncHistory> = new Map();
@@ -543,6 +551,14 @@ export class MemStorage implements IStorage {
       stripeSubscriptionId: null,
       subscriptionStatus: "inactive",
       onboardingCompleted: false,
+      optimizationSettings: {
+        autoOptimization: false,
+        autoScheduling: true,
+        autoPricing: false,
+        optimizationThreshold: 70,
+        learningMode: true,
+        notifyOptimizations: true
+      },
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -580,7 +596,11 @@ export class MemStorage implements IStorage {
       id,
       userId,
       isConnected: true,
+      accessToken: connection.accessToken || null,
+      refreshToken: connection.refreshToken || null,
+      tokenExpiresAt: connection.tokenExpiresAt || null,
       lastSyncAt: null,
+      settings: connection.settings || {},
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -608,7 +628,7 @@ export class MemStorage implements IStorage {
       listings = listings.filter(listing => listing.status === filters.status);
     }
     
-    return listings.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return listings.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
   }
 
   async getListing(id: string): Promise<Listing | undefined> {
@@ -622,6 +642,14 @@ export class MemStorage implements IStorage {
       id,
       userId,
       status: "draft",
+      brand: listing.brand || null,
+      description: listing.description || null,
+      subtitle: listing.subtitle || null,
+      category: listing.category || null,
+      condition: listing.condition || null,
+      packageWeight: listing.packageWeight || null,
+      packageDimensions: listing.packageDimensions || null,
+      images: listing.images || null,
       aiGenerated: false,
       originalImageUrl: null,
       createdAt: new Date(),
@@ -663,6 +691,7 @@ export class MemStorage implements IStorage {
       externalUrl: null,
       status: "pending",
       errorMessage: null,
+      postingData: post.postingData || {},
       postedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -696,7 +725,7 @@ export class MemStorage implements IStorage {
       jobs = jobs.filter(job => job.type === filters.type);
     }
     
-    return jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return jobs.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
   }
 
   async getUserJobs(userId: string, filters?: { status?: string; type?: string }): Promise<Job[]> {
@@ -710,7 +739,7 @@ export class MemStorage implements IStorage {
       jobs = jobs.filter(job => job.type === filters.type);
     }
     
-    return jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return jobs.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
   }
 
   async getJob(id: string): Promise<Job | undefined> {
@@ -731,6 +760,15 @@ export class MemStorage implements IStorage {
       maxAttempts: 3,
       startedAt: null,
       completedAt: null,
+      data: job.data || {},
+      scheduledFor: job.scheduledFor || null,
+      priority: job.priority || 5,
+      dependencies: job.dependencies || null,
+      marketplaceConfig: job.marketplaceConfig || null,
+      rateLimitConfig: job.rateLimitConfig || null,
+      retryConfig: job.retryConfig || null,
+      optimizationData: job.optimizationData || null,
+      schedulingMetadata: job.schedulingMetadata || {},
       createdAt: new Date(),
     };
     this.jobs.set(id, newJob);
@@ -760,7 +798,7 @@ export class MemStorage implements IStorage {
   async getAuditLogs(userId: string, limit = 50): Promise<AuditLog[]> {
     return Array.from(this.auditLogs.values())
       .filter(log => log.userId === userId)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0))
       .slice(0, limit);
   }
 
@@ -859,7 +897,7 @@ export class MemStorage implements IStorage {
   async getSyncHistory(userId: string, limit = 50): Promise<SyncHistory[]> {
     return Array.from(this.syncHistory.values())
       .filter(history => history.userId === userId)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0))
       .slice(0, limit);
   }
 
@@ -966,7 +1004,7 @@ export class MemStorage implements IStorage {
   async getAutoDelistHistory(userId: string, limit: number = 100): Promise<AutoDelistHistory[]> {
     const history = Array.from(this.autoDelistHistory.values())
       .filter(h => h.userId === userId)
-      .sort((a, b) => b.delistedAt.getTime() - a.delistedAt.getTime());
+      .sort((a, b) => (b.delistedAt?.getTime() || 0) - (a.delistedAt?.getTime() || 0));
     
     return limit ? history.slice(0, limit) : history;
   }
@@ -994,6 +1032,9 @@ export class MemStorage implements IStorage {
       ...progress,
       id,
       userId,
+      currentStep: progress.currentStep || 0,
+      completedSteps: progress.completedSteps || [],
+      skipped: progress.skipped || null,
       completedAt: null,
       startedAt: new Date(),
       updatedAt: new Date(),
@@ -1072,7 +1113,14 @@ export class MemStorage implements IStorage {
       ...event,
       id,
       userId,
-      timestamp: new Date(),
+      marketplace: event.marketplace || null,
+      listingId: event.listingId || null,
+      metadata: event.metadata || {},
+      profit: event.profit || null,
+      eventData: event.eventData || {},
+      revenue: event.revenue || null,
+      timestamp: event.timestamp || new Date(),
+      createdAt: new Date(),
     };
     this.analyticsEvents.set(id, analyticsEvent);
     return analyticsEvent;
@@ -2878,7 +2926,7 @@ export class MemStorage implements IStorage {
       jobs = jobs.filter(job => job.soldMarketplace === filters.soldMarketplace);
     }
     
-    return jobs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return jobs.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
   }
 
   async getCrossPlatformSyncJob(id: string): Promise<CrossPlatformSyncJob | undefined> {
@@ -2999,7 +3047,7 @@ export class MemStorage implements IStorage {
 
     // Get recent syncs
     const recentSyncs = syncJobs
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0))
       .slice(0, 10);
 
     return {
@@ -3366,6 +3414,506 @@ export class MemStorage implements IStorage {
       healthScore,
       uptime
     };
+  }
+
+  // Batch methods
+  async getBatches(userId: string, filters?: { status?: string; type?: string }): Promise<Batch[]> {
+    let batches = Array.from(this.batches.values()).filter(batch => batch.userId === userId);
+    
+    if (filters?.status) {
+      batches = batches.filter(batch => batch.status === filters.status);
+    }
+    if (filters?.type) {
+      batches = batches.filter(batch => batch.type === filters.type);
+    }
+    
+    return batches.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+  }
+
+  async getBatch(id: string): Promise<Batch | undefined> {
+    return this.batches.get(id);
+  }
+
+  async createBatch(userId: string, batch: InsertBatch): Promise<Batch> {
+    const id = randomUUID();
+    const newBatch: Batch = {
+      ...batch,
+      id,
+      userId,
+      status: batch.status || 'pending',
+      totalItems: batch.totalItems || 0,
+      processedItems: batch.processedItems || 0,
+      successfulItems: batch.successfulItems || 0,
+      failedItems: batch.failedItems || 0,
+      progress: batch.progress || 0,
+      startedAt: null,
+      completedAt: null,
+      errorSummary: batch.errorSummary || null,
+      metadata: batch.metadata || {},
+      retryPolicy: batch.retryPolicy || {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.batches.set(id, newBatch);
+    return newBatch;
+  }
+
+  async updateBatch(id: string, updates: Partial<Batch>): Promise<Batch> {
+    const batch = this.batches.get(id);
+    if (!batch) throw new Error('Batch not found');
+    
+    const updatedBatch = { ...batch, ...updates, updatedAt: new Date() };
+    this.batches.set(id, updatedBatch);
+    return updatedBatch;
+  }
+
+  async deleteBatch(id: string): Promise<void> {
+    this.batches.delete(id);
+  }
+
+  async getBatchesByStatus(status: string, userId?: string): Promise<Batch[]> {
+    let batches = Array.from(this.batches.values()).filter(batch => batch.status === status);
+    if (userId) {
+      batches = batches.filter(batch => batch.userId === userId);
+    }
+    return batches.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+  }
+
+  async getBatchProgress(id: string): Promise<{ 
+    totalItems: number; 
+    processedItems: number; 
+    successfulItems: number; 
+    failedItems: number; 
+    progress: number 
+  }> {
+    const batch = this.batches.get(id);
+    if (!batch) throw new Error('Batch not found');
+    
+    return {
+      totalItems: batch.totalItems || 0,
+      processedItems: batch.processedItems || 0,
+      successfulItems: batch.successfulItems || 0,
+      failedItems: batch.failedItems || 0,
+      progress: batch.progress || 0
+    };
+  }
+
+  // Batch Item methods
+  async getBatchItems(batchId: string, filters?: { status?: string }): Promise<BatchItem[]> {
+    let items = Array.from(this.batchItems.values()).filter(item => item.batchId === batchId);
+    
+    if (filters?.status) {
+      items = items.filter(item => item.status === filters.status);
+    }
+    
+    return items.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+  }
+
+  async getBatchItem(id: string): Promise<BatchItem | undefined> {
+    return this.batchItems.get(id);
+  }
+
+  async createBatchItem(batchItem: InsertBatchItem): Promise<BatchItem> {
+    const id = randomUUID();
+    const newItem: BatchItem = {
+      ...batchItem,
+      id,
+      status: batchItem.status || 'pending',
+      attempts: batchItem.attempts || 0,
+      maxAttempts: batchItem.maxAttempts || 3,
+      errorMessage: batchItem.errorMessage || null,
+      processedAt: null,
+      retryAt: batchItem.retryAt || null,
+      metadata: batchItem.metadata || {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.batchItems.set(id, newItem);
+    return newItem;
+  }
+
+  async updateBatchItem(id: string, updates: Partial<BatchItem>): Promise<BatchItem> {
+    const item = this.batchItems.get(id);
+    if (!item) throw new Error('Batch item not found');
+    
+    const updatedItem = { ...item, ...updates, updatedAt: new Date() };
+    this.batchItems.set(id, updatedItem);
+    return updatedItem;
+  }
+
+  async deleteBatchItem(id: string): Promise<void> {
+    this.batchItems.delete(id);
+  }
+
+  async createBatchItems(batchItems: InsertBatchItem[]): Promise<BatchItem[]> {
+    const createdItems: BatchItem[] = [];
+    for (const item of batchItems) {
+      const created = await this.createBatchItem(item);
+      createdItems.push(created);
+    }
+    return createdItems;
+  }
+
+  async updateBatchItemsStatus(batchId: string, status: string, filters?: { currentStatus?: string }): Promise<void> {
+    const items = await this.getBatchItems(batchId, filters);
+    for (const item of items) {
+      await this.updateBatchItem(item.id, { status });
+    }
+  }
+
+  // Bulk Upload methods
+  async getBulkUploads(userId: string, filters?: { status?: string; uploadType?: string }): Promise<BulkUpload[]> {
+    let uploads = Array.from(this.bulkUploads.values()).filter(upload => upload.userId === userId);
+    
+    if (filters?.status) {
+      uploads = uploads.filter(upload => upload.status === filters.status);
+    }
+    if (filters?.uploadType) {
+      uploads = uploads.filter(upload => upload.uploadType === filters.uploadType);
+    }
+    
+    return uploads.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+  }
+
+  async getBulkUpload(id: string): Promise<BulkUpload | undefined> {
+    return this.bulkUploads.get(id);
+  }
+
+  async createBulkUpload(userId: string, upload: InsertBulkUpload): Promise<BulkUpload> {
+    const id = randomUUID();
+    const newUpload: BulkUpload = {
+      ...upload,
+      id,
+      userId,
+      status: upload.status || 'pending',
+      totalRows: upload.totalRows || 0,
+      processedRows: upload.processedRows || 0,
+      successfulRows: upload.successfulRows || 0,
+      failedRows: upload.failedRows || 0,
+      progress: upload.progress || 0,
+      startedAt: null,
+      completedAt: null,
+      errorReport: upload.errorReport || null,
+      validationResults: upload.validationResults || {},
+      mappingConfig: upload.mappingConfig || {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.bulkUploads.set(id, newUpload);
+    return newUpload;
+  }
+
+  async updateBulkUpload(id: string, updates: Partial<BulkUpload>): Promise<BulkUpload> {
+    const upload = this.bulkUploads.get(id);
+    if (!upload) throw new Error('Bulk upload not found');
+    
+    const updatedUpload = { ...upload, ...updates, updatedAt: new Date() };
+    this.bulkUploads.set(id, updatedUpload);
+    return updatedUpload;
+  }
+
+  async deleteBulkUpload(id: string): Promise<void> {
+    this.bulkUploads.delete(id);
+  }
+
+  // Batch Template methods
+  async getBatchTemplates(userId: string, filters?: { type?: string; isPublic?: boolean }): Promise<BatchTemplate[]> {
+    let templates = Array.from(this.batchTemplates.values()).filter(
+      template => template.userId === userId || template.isPublic
+    );
+    
+    if (filters?.type) {
+      templates = templates.filter(template => template.type === filters.type);
+    }
+    if (filters?.isPublic !== undefined) {
+      templates = templates.filter(template => template.isPublic === filters.isPublic);
+    }
+    
+    return templates.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+  }
+
+  async getBatchTemplate(id: string): Promise<BatchTemplate | undefined> {
+    return this.batchTemplates.get(id);
+  }
+
+  async createBatchTemplate(userId: string, template: InsertBatchTemplate): Promise<BatchTemplate> {
+    const id = randomUUID();
+    const newTemplate: BatchTemplate = {
+      ...template,
+      id,
+      userId,
+      isPublic: template.isPublic || false,
+      usageCount: 0,
+      templateData: template.templateData || {},
+      validationRules: template.validationRules || {},
+      defaultSettings: template.defaultSettings || {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.batchTemplates.set(id, newTemplate);
+    return newTemplate;
+  }
+
+  async updateBatchTemplate(id: string, updates: Partial<BatchTemplate>): Promise<BatchTemplate> {
+    const template = this.batchTemplates.get(id);
+    if (!template) throw new Error('Batch template not found');
+    
+    const updatedTemplate = { ...template, ...updates, updatedAt: new Date() };
+    this.batchTemplates.set(id, updatedTemplate);
+    return updatedTemplate;
+  }
+
+  async deleteBatchTemplate(id: string): Promise<void> {
+    this.batchTemplates.delete(id);
+  }
+
+  async getDefaultBatchTemplates(type: string): Promise<BatchTemplate[]> {
+    return Array.from(this.batchTemplates.values())
+      .filter(template => template.type === type && template.isPublic)
+      .sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
+  }
+
+  async incrementTemplateUsage(id: string): Promise<void> {
+    const template = this.batchTemplates.get(id);
+    if (template) {
+      await this.updateBatchTemplate(id, { 
+        usageCount: (template.usageCount || 0) + 1 
+      });
+    }
+  }
+
+  // Batch Analytics methods
+  async getBatchAnalytics(batchId: string, marketplace?: string): Promise<BatchAnalytics[]> {
+    let analytics = Array.from(this.batchAnalytics.values()).filter(
+      analytics => analytics.batchId === batchId
+    );
+    
+    if (marketplace) {
+      analytics = analytics.filter(analytics => analytics.marketplace === marketplace);
+    }
+    
+    return analytics.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+  }
+
+  async createBatchAnalytics(userId: string, analytics: InsertBatchAnalytics): Promise<BatchAnalytics> {
+    const id = randomUUID();
+    const newAnalytics: BatchAnalytics = {
+      ...analytics,
+      id,
+      userId,
+      metrics: analytics.metrics || {},
+      performanceData: analytics.performanceData || {},
+      errorAnalysis: analytics.errorAnalysis || {},
+      costAnalysis: analytics.costAnalysis || {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.batchAnalytics.set(id, newAnalytics);
+    return newAnalytics;
+  }
+
+  async updateBatchAnalytics(id: string, updates: Partial<BatchAnalytics>): Promise<BatchAnalytics> {
+    const analytics = this.batchAnalytics.get(id);
+    if (!analytics) throw new Error('Batch analytics not found');
+    
+    const updatedAnalytics = { ...analytics, ...updates, updatedAt: new Date() };
+    this.batchAnalytics.set(id, updatedAnalytics);
+    return updatedAnalytics;
+  }
+
+  async getBatchPerformanceStats(userId: string, filters?: { 
+    dateStart?: Date; 
+    dateEnd?: Date; 
+    marketplace?: string; 
+    type?: string 
+  }): Promise<Array<{
+    batchId: string;
+    batchName: string;
+    type: string;
+    successRate: number;
+    avgProcessingTime: number;
+    totalItems: number;
+    costEfficiency: number;
+  }>> {
+    let batches = Array.from(this.batches.values()).filter(batch => batch.userId === userId);
+    
+    if (filters?.dateStart) {
+      batches = batches.filter(batch => 
+        batch.createdAt && batch.createdAt >= filters.dateStart!
+      );
+    }
+    if (filters?.dateEnd) {
+      batches = batches.filter(batch => 
+        batch.createdAt && batch.createdAt <= filters.dateEnd!
+      );
+    }
+    if (filters?.type) {
+      batches = batches.filter(batch => batch.type === filters.type);
+    }
+    
+    return batches.map(batch => ({
+      batchId: batch.id,
+      batchName: batch.name,
+      type: batch.type,
+      successRate: batch.totalItems ? 
+        ((batch.successfulItems || 0) / batch.totalItems) * 100 : 0,
+      avgProcessingTime: batch.startedAt && batch.completedAt ? 
+        batch.completedAt.getTime() - batch.startedAt.getTime() : 0,
+      totalItems: batch.totalItems || 0,
+      costEfficiency: 100 // Mock value
+    }));
+  }
+
+  // Batch Queue methods
+  async getBatchQueue(filters?: { priority?: number; status?: string }): Promise<BatchQueue[]> {
+    let queue = Array.from(this.batchQueue.values());
+    
+    if (filters?.priority) {
+      queue = queue.filter(entry => entry.priority === filters.priority);
+    }
+    if (filters?.status) {
+      queue = queue.filter(entry => entry.status === filters.status);
+    }
+    
+    return queue.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+  }
+
+  async getBatchQueueEntry(batchId: string): Promise<BatchQueue | undefined> {
+    return Array.from(this.batchQueue.values()).find(entry => entry.batchId === batchId);
+  }
+
+  async createBatchQueueEntry(entry: InsertBatchQueue): Promise<BatchQueue> {
+    const id = randomUUID();
+    const newEntry: BatchQueue = {
+      ...entry,
+      id,
+      status: entry.status || 'queued',
+      priority: entry.priority || 5,
+      estimatedStartTime: entry.estimatedStartTime || null,
+      actualStartTime: null,
+      dependencies: entry.dependencies || [],
+      resourceRequirements: entry.resourceRequirements || {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.batchQueue.set(id, newEntry);
+    return newEntry;
+  }
+
+  async updateBatchQueueEntry(batchId: string, updates: Partial<BatchQueue>): Promise<BatchQueue> {
+    const entry = await this.getBatchQueueEntry(batchId);
+    if (!entry) throw new Error('Batch queue entry not found');
+    
+    const updatedEntry = { ...entry, ...updates, updatedAt: new Date() };
+    this.batchQueue.set(entry.id, updatedEntry);
+    return updatedEntry;
+  }
+
+  async deleteBatchQueueEntry(batchId: string): Promise<void> {
+    const entry = await this.getBatchQueueEntry(batchId);
+    if (entry) {
+      this.batchQueue.delete(entry.id);
+    }
+  }
+
+  async getNextBatchForProcessing(): Promise<BatchQueue | undefined> {
+    const queue = await this.getBatchQueue({ status: 'queued' });
+    return queue.sort((a, b) => (a.priority || 0) - (b.priority || 0))[0];
+  }
+
+  async updateQueuePositions(): Promise<void> {
+    // Mock implementation - in real implementation this would update queue positions
+    // based on priority and dependencies
+  }
+
+  // Failure Category methods
+  async getFailureCategories(): Promise<FailureCategory[]> {
+    return Array.from(this.failureCategories.values())
+      .sort((a, b) => (a.severity || 0) - (b.severity || 0));
+  }
+
+  async getFailureCategory(category: string): Promise<FailureCategory | undefined> {
+    return Array.from(this.failureCategories.values())
+      .find(fc => fc.category === category);
+  }
+
+  async createFailureCategory(category: InsertFailureCategory): Promise<FailureCategory> {
+    const id = randomUUID();
+    const newCategory: FailureCategory = {
+      ...category,
+      id,
+      isRetryable: category.isRetryable || false,
+      severity: category.severity || 5,
+      retrySettings: category.retrySettings || {},
+      escalationRules: category.escalationRules || {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.failureCategories.set(id, newCategory);
+    return newCategory;
+  }
+
+  async updateFailureCategory(id: string, updates: Partial<FailureCategory>): Promise<FailureCategory> {
+    const category = this.failureCategories.get(id);
+    if (!category) throw new Error('Failure category not found');
+    
+    const updatedCategory = { ...category, ...updates, updatedAt: new Date() };
+    this.failureCategories.set(id, updatedCategory);
+    return updatedCategory;
+  }
+
+  // Marketplace Retry Config methods
+  async getMarketplaceRetryConfig(marketplace: string): Promise<MarketplaceRetryConfig | undefined> {
+    return Array.from(this.marketplaceRetryConfig.values())
+      .find(config => config.marketplace === marketplace);
+  }
+
+  async createMarketplaceRetryConfig(config: InsertMarketplaceRetryConfig): Promise<MarketplaceRetryConfig> {
+    const id = randomUUID();
+    const newConfig: MarketplaceRetryConfig = {
+      ...config,
+      id,
+      isActive: config.isActive || true,
+      maxRetries: config.maxRetries || 3,
+      backoffStrategy: config.backoffStrategy || 'exponential',
+      baseDelay: config.baseDelay || 1000,
+      maxDelay: config.maxDelay || 30000,
+      jitterEnabled: config.jitterEnabled || true,
+      retryConditions: config.retryConditions || {},
+      circuitBreakerSettings: config.circuitBreakerSettings || {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.marketplaceRetryConfig.set(id, newConfig);
+    return newConfig;
+  }
+
+  async updateMarketplaceRetryConfig(marketplace: string, updates: Partial<MarketplaceRetryConfig>): Promise<MarketplaceRetryConfig> {
+    const config = await this.getMarketplaceRetryConfig(marketplace);
+    if (!config) throw new Error('Marketplace retry config not found');
+    
+    const updatedConfig = { ...config, ...updates, updatedAt: new Date() };
+    this.marketplaceRetryConfig.set(config.id, updatedConfig);
+    return updatedConfig;
+  }
+
+  // Retry Metrics methods
+  async getRetryMetrics(filters?: { marketplace?: string; jobType?: string; timeWindow?: Date }): Promise<RetryMetrics[]> {
+    let metrics = Array.from(this.retryMetrics.values());
+    
+    if (filters?.marketplace) {
+      metrics = metrics.filter(metric => metric.marketplace === filters.marketplace);
+    }
+    if (filters?.jobType) {
+      metrics = metrics.filter(metric => metric.jobType === filters.jobType);
+    }
+    if (filters?.timeWindow) {
+      metrics = metrics.filter(metric => 
+        metric.timeWindow && metric.timeWindow.getTime() === filters.timeWindow!.getTime()
+      );
+    }
+    
+    return metrics.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
   }
 }
 
