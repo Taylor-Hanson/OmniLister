@@ -550,21 +550,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Process numeric fields with proper coercion
-      if (rawData.price && typeof rawData.price === 'string') {
-        rawData.price = parseFloat(rawData.price);
+      // Process price field - keep as string for database
+      if (rawData.price) {
+        if (typeof rawData.price === 'number') {
+          rawData.price = rawData.price.toFixed(2);
+        } else if (typeof rawData.price === 'string') {
+          // Clean up the price string (remove $ signs, etc.) and ensure 2 decimal places
+          const cleanPrice = rawData.price.replace(/[^0-9.-]/g, '');
+          rawData.price = parseFloat(cleanPrice).toFixed(2);
+        }
       }
       if (rawData.packageWeight && typeof rawData.packageWeight === 'string') {
         rawData.packageWeight = parseFloat(rawData.packageWeight);
       }
-      if (rawData.startPrice && typeof rawData.startPrice === 'string') {
-        rawData.startPrice = parseFloat(rawData.startPrice);
+      // Keep auction prices as strings too
+      if (rawData.startPrice) {
+        if (typeof rawData.startPrice === 'number') {
+          rawData.startPrice = rawData.startPrice.toFixed(2);
+        } else if (typeof rawData.startPrice === 'string') {
+          const cleanPrice = rawData.startPrice.replace(/[^0-9.-]/g, '');
+          rawData.startPrice = parseFloat(cleanPrice).toFixed(2);
+        }
       }
-      if (rawData.reservePrice && typeof rawData.reservePrice === 'string') {
-        rawData.reservePrice = parseFloat(rawData.reservePrice);
+      if (rawData.reservePrice) {
+        if (typeof rawData.reservePrice === 'number') {
+          rawData.reservePrice = rawData.reservePrice.toFixed(2);
+        } else if (typeof rawData.reservePrice === 'string') {
+          const cleanPrice = rawData.reservePrice.replace(/[^0-9.-]/g, '');
+          rawData.reservePrice = parseFloat(cleanPrice).toFixed(2);
+        }
       }
-      if (rawData.buyItNowPrice && typeof rawData.buyItNowPrice === 'string') {
-        rawData.buyItNowPrice = parseFloat(rawData.buyItNowPrice);
+      if (rawData.buyItNowPrice) {
+        if (typeof rawData.buyItNowPrice === 'number') {
+          rawData.buyItNowPrice = rawData.buyItNowPrice.toFixed(2);
+        } else if (typeof rawData.buyItNowPrice === 'string') {
+          const cleanPrice = rawData.buyItNowPrice.replace(/[^0-9.-]/g, '');
+          rawData.buyItNowPrice = parseFloat(cleanPrice).toFixed(2);
+        }
       }
 
       // Normalize itemSpecifics to ensure consistent structure
@@ -613,21 +635,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Process numeric fields with proper coercion
-      if (rawData.price && typeof rawData.price === 'string') {
-        rawData.price = parseFloat(rawData.price);
+      // Process price field - keep as string for database
+      if (rawData.price) {
+        if (typeof rawData.price === 'number') {
+          rawData.price = rawData.price.toFixed(2);
+        } else if (typeof rawData.price === 'string') {
+          // Clean up the price string (remove $ signs, etc.) and ensure 2 decimal places
+          const cleanPrice = rawData.price.replace(/[^0-9.-]/g, '');
+          rawData.price = parseFloat(cleanPrice).toFixed(2);
+        }
       }
       if (rawData.packageWeight && typeof rawData.packageWeight === 'string') {
         rawData.packageWeight = parseFloat(rawData.packageWeight);
       }
-      if (rawData.startPrice && typeof rawData.startPrice === 'string') {
-        rawData.startPrice = parseFloat(rawData.startPrice);
+      // Keep auction prices as strings too
+      if (rawData.startPrice) {
+        if (typeof rawData.startPrice === 'number') {
+          rawData.startPrice = rawData.startPrice.toFixed(2);
+        } else if (typeof rawData.startPrice === 'string') {
+          const cleanPrice = rawData.startPrice.replace(/[^0-9.-]/g, '');
+          rawData.startPrice = parseFloat(cleanPrice).toFixed(2);
+        }
       }
-      if (rawData.reservePrice && typeof rawData.reservePrice === 'string') {
-        rawData.reservePrice = parseFloat(rawData.reservePrice);
+      if (rawData.reservePrice) {
+        if (typeof rawData.reservePrice === 'number') {
+          rawData.reservePrice = rawData.reservePrice.toFixed(2);
+        } else if (typeof rawData.reservePrice === 'string') {
+          const cleanPrice = rawData.reservePrice.replace(/[^0-9.-]/g, '');
+          rawData.reservePrice = parseFloat(cleanPrice).toFixed(2);
+        }
       }
-      if (rawData.buyItNowPrice && typeof rawData.buyItNowPrice === 'string') {
-        rawData.buyItNowPrice = parseFloat(rawData.buyItNowPrice);
+      if (rawData.buyItNowPrice) {
+        if (typeof rawData.buyItNowPrice === 'number') {
+          rawData.buyItNowPrice = rawData.buyItNowPrice.toFixed(2);
+        } else if (typeof rawData.buyItNowPrice === 'string') {
+          const cleanPrice = rawData.buyItNowPrice.replace(/[^0-9.-]/g, '');
+          rawData.buyItNowPrice = parseFloat(cleanPrice).toFixed(2);
+        }
       }
 
       // Normalize itemSpecifics to ensure consistent structure
