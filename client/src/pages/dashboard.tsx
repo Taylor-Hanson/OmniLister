@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { format } from "date-fns";
 import { Link } from "wouter";
-import { Zap, TrendingUp, Target, ArrowRight, Lightbulb } from "lucide-react";
+import { Zap, TrendingUp, Target, ArrowRight, Lightbulb, Activity } from "lucide-react";
 import type { Listing, Job, AuditLog } from "@shared/schema";
 
 export default function Dashboard() {
@@ -126,28 +126,12 @@ export default function Dashboard() {
               </select>
             </CardHeader>
             <CardContent>
-              {/* Mock Chart Area */}
-              <div className="h-64 bg-muted/30 rounded-lg flex items-center justify-center relative overflow-hidden">
-                <div className="absolute bottom-0 left-0 right-0 h-full flex items-end justify-around px-4">
-                  {[40, 60, 45, 75, 65, 80, 90, 85, 70, 95, 100, 88].map((height, index) => (
-                    <div 
-                      key={index}
-                      className="bg-primary w-4 rounded-t transition-all duration-1000 ease-out"
-                      style={{ height: `${height}%` }}
-                    />
-                  ))}
-                </div>
-              </div>
-              
-              {/* Chart Legend */}
-              <div className="flex items-center justify-center space-x-6 mt-4">
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-primary rounded-sm mr-2"></div>
-                  <span className="text-sm text-muted-foreground">Revenue</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-3 h-3 bg-secondary rounded-sm mr-2"></div>
-                  <span className="text-sm text-muted-foreground">Units Sold</span>
+              {/* No Sales Data State */}
+              <div className="h-64 flex items-center justify-center">
+                <div className="text-center">
+                  <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-muted-foreground">No Sales Data</h3>
+                  <p className="text-sm text-muted-foreground">Start selling to see your performance metrics</p>
                 </div>
               </div>
             </CardContent>
