@@ -1396,6 +1396,309 @@ export const insertCrossPlatformSyncHistorySchema = createInsertSchema(crossPlat
   createdAt: true,
 });
 
+// Automation Rules - Central configuration for all marketplace automations
+export const automationRules = pgTable("automation_rules", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace").notNull(), // poshmark, mercari, depop, grailed, etc.
+  ruleType: text("rule_type").notNull(), // auto_share, auto_follow, auto_offer, auto_bump, auto_relist, bundle_offer
+  ruleName: text("rule_name").notNull(),
+  description: text("description"),
+  isEnabled: boolean("is_enabled").default(true),
+  priority: integer("priority").default(0), // Higher priority rules execute first
+  
+  // Rule Configuration
+  ruleConfig: jsonb("rule_config").notNull(), // Complete rule configuration
+  triggerType: text("trigger_type").notNull(), // scheduled, event_based, continuous
+  triggerConfig: jsonb("trigger_config"), // Trigger-specific config (cron, event conditions, etc.)
+  
+  // Action Configuration
+  actionConfig: jsonb("action_config"), // Action-specific parameters
+  targetCriteria: jsonb("target_criteria"), // Criteria for selecting items/users to act on
+  
+  // Rate Limiting & Safety
+  dailyLimit: integer("daily_limit"), // Max actions per day
+  hourlyLimit: integer("hourly_limit"), // Max actions per hour
+  minDelaySeconds: integer("min_delay_seconds").default(5), // Minimum delay between actions
+  maxDelaySeconds: integer("max_delay_seconds").default(30), // Maximum delay (for randomization)
+  humanizeActions: boolean("humanize_actions").default(true), // Add human-like patterns
+  
+  // Time Windows
+  activeHours: jsonb("active_hours"), // Array of {start: "09:00", end: "17:00", timezone: "UTC"}
+  activeDays: text("active_days").array(), // ["monday", "tuesday", ...] or null for all days
+  blackoutDates: timestamp("blackout_dates").array(), // Dates to skip automation
+  
+  // Performance Tracking
+  totalExecutions: integer("total_executions").default(0),
+  successfulExecutions: integer("successful_executions").default(0),
+  failedExecutions: integer("failed_executions").default(0),
+  lastExecutedAt: timestamp("last_executed_at"),
+  lastError: text("last_error"),
+  
+  // Compliance & Safety
+  requiresReview: boolean("requires_review").default(false), // Require manual review before execution
+  complianceNotes: text("compliance_notes"),
+  riskLevel: text("risk_level").default("low"), // low, medium, high
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Automation Schedules - Manage recurring automation execution schedules
+export const automationSchedules = pgTable("automation_schedules", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  ruleId: uuid("rule_id").notNull().references(() => automationRules.id, { onDelete: "cascade" }),
+  scheduleType: text("schedule_type").notNull(), // cron, interval, time_of_day, continuous
+  scheduleExpression: text("schedule_expression"), // Cron expression or interval specification
+  
+  // Schedule Configuration
+  intervalMinutes: integer("interval_minutes"), // For interval-based schedules
+  specificTimes: text("specific_times").array(), // Array of times like ["09:00", "14:00", "18:00"]
+  timezone: text("timezone").default("UTC"),
+  
+  // Execution Windows
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  maxExecutions: integer("max_executions"), // Total execution limit
+  executionCount: integer("execution_count").default(0),
+  
+  // Schedule State
+  isActive: boolean("is_active").default(true),
+  isPaused: boolean("is_paused").default(false),
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  
+  // Execution Context
+  lastRunStatus: text("last_run_status"), // success, failed, partial, skipped
+  lastRunDuration: integer("last_run_duration"), // Duration in milliseconds
+  lastRunItemsProcessed: integer("last_run_items_processed"),
+  lastRunError: text("last_run_error"),
+  
+  // Retry Configuration
+  retryOnFailure: boolean("retry_on_failure").default(true),
+  maxRetries: integer("max_retries").default(3),
+  retryDelayMinutes: integer("retry_delay_minutes").default(5),
+  currentRetryCount: integer("current_retry_count").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Automation Logs - Comprehensive audit trail of all automation activities
+export const automationLogs = pgTable("automation_logs", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  ruleId: uuid("rule_id").references(() => automationRules.id, { onDelete: "set null" }),
+  scheduleId: uuid("schedule_id").references(() => automationSchedules.id, { onDelete: "set null" }),
+  
+  // Action Details
+  actionType: text("action_type").notNull(), // share_item, follow_user, send_offer, bump_listing, etc.
+  marketplace: text("marketplace").notNull(),
+  status: text("status").notNull(), // success, failed, partial, skipped, rate_limited
+  
+  // Target Information
+  targetType: text("target_type"), // listing, user, bundle, closet
+  targetId: uuid("target_id"), // ID of affected entity
+  targetDetails: jsonb("target_details"), // Additional target information
+  
+  // Action Context
+  actionDetails: jsonb("action_details"), // Specific action parameters used
+  triggerSource: text("trigger_source"), // scheduled, manual, event, api
+  batchId: uuid("batch_id"), // If part of batch operation
+  sessionId: uuid("session_id"), // Group related actions in a session
+  
+  // Results & Metrics
+  itemsProcessed: integer("items_processed").default(0),
+  itemsSucceeded: integer("items_succeeded").default(0),
+  itemsFailed: integer("items_failed").default(0),
+  executionTime: integer("execution_time"), // Time in milliseconds
+  
+  // Error Handling
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  errorDetails: jsonb("error_details"),
+  retryAttempt: integer("retry_attempt").default(0),
+  
+  // Compliance & Tracking
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  apiVersion: text("api_version"),
+  ruleSnapshot: jsonb("rule_snapshot"), // Rule config at time of execution
+  
+  executedAt: timestamp("executed_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Poshmark Share Settings - Specialized configuration for Poshmark closet sharing
+export const poshmarkShareSettings = pgTable("poshmark_share_settings", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  
+  // Share Configuration
+  shareMode: text("share_mode").default("closet"), // closet, individual, selective, party
+  shareOrder: text("share_order").default("newest"), // newest, oldest, random, price_high, price_low
+  reverseOrder: boolean("reverse_order").default(false),
+  
+  // Share Intervals & Limits
+  minShareInterval: integer("min_share_interval").default(300), // Minimum seconds between shares
+  maxShareInterval: integer("max_share_interval").default(900), // Maximum seconds (for randomization)
+  dailyShareLimit: integer("daily_share_limit").default(5000), // Poshmark's current limit
+  sharePerSession: integer("share_per_session").default(100), // Items per share session
+  sessionBreakMinutes: integer("session_break_minutes").default(30), // Break between sessions
+  
+  // Peak Hours Configuration
+  peakHoursEnabled: boolean("peak_hours_enabled").default(true),
+  peakHours: jsonb("peak_hours"), // Array of {start: "18:00", end: "22:00", multiplier: 1.5}
+  weekendMultiplier: decimal("weekend_multiplier", { precision: 3, scale: 2 }).default("1.2"),
+  
+  // Party Share Settings
+  autoShareToParties: boolean("auto_share_to_parties").default(false),
+  partyShareCategories: text("party_share_categories").array(), // Categories to share to parties
+  maxPartyShares: integer("max_party_shares").default(50), // Max items per party
+  
+  // Smart Sharing
+  prioritizeNewListings: boolean("prioritize_new_listings").default(true),
+  newListingDays: integer("new_listing_days").default(7), // Days to consider listing as "new"
+  prioritizeLikedItems: boolean("prioritize_liked_items").default(true),
+  skipSoldItems: boolean("skip_sold_items").default(true),
+  skipReservedItems: boolean("skip_reserved_items").default(true),
+  
+  // Share Rotation
+  rotationEnabled: boolean("rotation_enabled").default(false),
+  rotationGroups: jsonb("rotation_groups"), // Array of listing ID groups to rotate
+  currentRotationIndex: integer("current_rotation_index").default(0),
+  
+  // Analytics & Tracking
+  totalSharesThisMonth: integer("total_shares_this_month").default(0),
+  totalSharesAllTime: integer("total_shares_all_time").default(0),
+  lastShareAt: timestamp("last_share_at"),
+  lastBulkShareAt: timestamp("last_bulk_share_at"),
+  averageSharesPerDay: decimal("average_shares_per_day", { precision: 8, scale: 2 }),
+  
+  // Compliance & Safety
+  captchaHandling: text("captcha_handling").default("pause"), // pause, manual, service
+  respectRateLimits: boolean("respect_rate_limits").default(true),
+  emergencyStop: boolean("emergency_stop").default(false),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Offer Templates - Configurable templates for automated offers across platforms
+export const offerTemplates = pgTable("offer_templates", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace").notNull(),
+  templateName: text("template_name").notNull(),
+  templateType: text("template_type").notNull(), // single_offer, bundle_offer, counter_offer, price_drop
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  
+  // Offer Configuration
+  discountType: text("discount_type").default("percentage"), // percentage, fixed_amount
+  discountValue: decimal("discount_value", { precision: 10, scale: 2 }).notNull(), // Percentage or dollar amount
+  shippingDiscount: decimal("shipping_discount", { precision: 10, scale: 2 }).default("0"), // Shipping discount
+  
+  // Bundle Configuration (Poshmark specific)
+  bundleMinItems: integer("bundle_min_items").default(2),
+  bundleDiscountTiers: jsonb("bundle_discount_tiers"), // [{items: 2, discount: 10}, {items: 3, discount: 15}]
+  bundleMessageTemplate: text("bundle_message_template"),
+  
+  // Targeting Rules
+  targetLikers: boolean("target_likers").default(true),
+  targetWatchers: boolean("target_watchers").default(false),
+  minLikesRequired: integer("min_likes_required").default(1),
+  daysAfterLike: integer("days_after_like").default(1), // Wait days after like before offering
+  
+  // Price Rules
+  minPriceThreshold: decimal("min_price_threshold", { precision: 10, scale: 2 }), // Don't offer below this price
+  maxDiscountPercent: decimal("max_discount_percent", { precision: 5, scale: 2 }).default("30"), // Maximum discount allowed
+  priceFloor: decimal("price_floor", { precision: 10, scale: 2 }), // Absolute minimum price
+  
+  // Message Templates
+  offerMessage: text("offer_message"), // Message sent with offer
+  declineMessage: text("decline_message"), // Message for declined offers
+  counterMessage: text("counter_message"), // Message for counter offers
+  usePersonalization: boolean("use_personalization").default(false), // Add buyer's name, etc.
+  
+  // Timing Configuration
+  sendTime: text("send_time"), // Preferred time to send offers (HH:MM)
+  sendDays: text("send_days").array(), // Days of week to send
+  expirationHours: integer("expiration_hours").default(24), // Offer expiration time
+  
+  // Limits & Controls
+  dailyOfferLimit: integer("daily_offer_limit").default(100),
+  offerPerItemLimit: integer("offer_per_item_limit").default(1), // Max offers per item per buyer
+  cooldownDays: integer("cooldown_days").default(7), // Days before re-offering to same buyer
+  
+  // Performance Tracking
+  totalOffersSent: integer("total_offers_sent").default(0),
+  offersAccepted: integer("offers_accepted").default(0),
+  offersDeclined: integer("offers_declined").default(0),
+  offersCountered: integer("offers_countered").default(0),
+  conversionRate: decimal("conversion_rate", { precision: 5, scale: 2 }),
+  averageDiscountAccepted: decimal("average_discount_accepted", { precision: 5, scale: 2 }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Insert schemas for automation tables
+export const insertAutomationRuleSchema = createInsertSchema(automationRules).omit({
+  id: true,
+  totalExecutions: true,
+  successfulExecutions: true,
+  failedExecutions: true,
+  lastExecutedAt: true,
+  lastError: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAutomationScheduleSchema = createInsertSchema(automationSchedules).omit({
+  id: true,
+  executionCount: true,
+  lastRunAt: true,
+  nextRunAt: true,
+  lastRunStatus: true,
+  lastRunDuration: true,
+  lastRunItemsProcessed: true,
+  lastRunError: true,
+  currentRetryCount: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAutomationLogSchema = createInsertSchema(automationLogs).omit({
+  id: true,
+  executedAt: true,
+  createdAt: true,
+});
+
+export const insertPoshmarkShareSettingsSchema = createInsertSchema(poshmarkShareSettings).omit({
+  id: true,
+  totalSharesThisMonth: true,
+  totalSharesAllTime: true,
+  lastShareAt: true,
+  lastBulkShareAt: true,
+  averageSharesPerDay: true,
+  currentRotationIndex: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertOfferTemplateSchema = createInsertSchema(offerTemplates).omit({
+  id: true,
+  totalOffersSent: true,
+  offersAccepted: true,
+  offersDeclined: true,
+  offersCountered: true,
+  conversionRate: true,
+  averageDiscountAccepted: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Insert schemas for webhook tables
 export const insertWebhookConfigurationSchema = createInsertSchema(webhookConfigurations).omit({
   id: true,
@@ -1443,6 +1746,18 @@ export type CrossPlatformSyncJob = typeof crossPlatformSyncJobs.$inferSelect;
 export type InsertCrossPlatformSyncJob = z.infer<typeof insertCrossPlatformSyncJobSchema>;
 export type CrossPlatformSyncHistory = typeof crossPlatformSyncHistory.$inferSelect;
 export type InsertCrossPlatformSyncHistory = z.infer<typeof insertCrossPlatformSyncHistorySchema>;
+
+// Automation types
+export type AutomationRule = typeof automationRules.$inferSelect;
+export type InsertAutomationRule = z.infer<typeof insertAutomationRuleSchema>;
+export type AutomationSchedule = typeof automationSchedules.$inferSelect;
+export type InsertAutomationSchedule = z.infer<typeof insertAutomationScheduleSchema>;
+export type AutomationLog = typeof automationLogs.$inferSelect;
+export type InsertAutomationLog = z.infer<typeof insertAutomationLogSchema>;
+export type PoshmarkShareSettings = typeof poshmarkShareSettings.$inferSelect;
+export type InsertPoshmarkShareSettings = z.infer<typeof insertPoshmarkShareSettingsSchema>;
+export type OfferTemplate = typeof offerTemplates.$inferSelect;
+export type InsertOfferTemplate = z.infer<typeof insertOfferTemplateSchema>;
 
 // Webhook types
 export type WebhookConfiguration = typeof webhookConfigurations.$inferSelect;

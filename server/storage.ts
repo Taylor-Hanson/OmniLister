@@ -38,7 +38,12 @@ import {
   type WebhookEvent, type InsertWebhookEvent,
   type WebhookDelivery, type InsertWebhookDelivery,
   type PollingSchedule, type InsertPollingSchedule,
-  type WebhookHealthMetrics, type InsertWebhookHealthMetrics
+  type WebhookHealthMetrics, type InsertWebhookHealthMetrics,
+  type AutomationRule, type InsertAutomationRule,
+  type AutomationSchedule, type InsertAutomationSchedule,
+  type AutomationLog, type InsertAutomationLog,
+  type PoshmarkShareSettings, type InsertPoshmarkShareSettings,
+  type OfferTemplate, type InsertOfferTemplate
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -468,6 +473,53 @@ export interface IStorage {
     healthScore: number;
     uptime: number;
   }>;
+
+  // Automation Rule methods
+  getAutomationRules(userId: string, marketplace?: string): Promise<AutomationRule[]>;
+  getAutomationRule(id: string): Promise<AutomationRule | undefined>;
+  createAutomationRule(userId: string, rule: InsertAutomationRule): Promise<AutomationRule>;
+  updateAutomationRule(id: string, updates: Partial<AutomationRule>): Promise<AutomationRule>;
+  deleteAutomationRule(id: string): Promise<void>;
+
+  // Automation Schedule methods
+  getAutomationSchedules(ruleId?: string): Promise<AutomationSchedule[]>;
+  getAutomationSchedule(id: string): Promise<AutomationSchedule | undefined>;
+  getActiveAutomationSchedules(): Promise<AutomationSchedule[]>;
+  createAutomationSchedule(schedule: InsertAutomationSchedule): Promise<AutomationSchedule>;
+  updateAutomationSchedule(id: string, updates: Partial<AutomationSchedule>): Promise<AutomationSchedule>;
+  deleteAutomationSchedule(id: string): Promise<void>;
+
+  // Automation Log methods
+  getAutomationLogs(userId: string, filters?: {
+    ruleId?: string;
+    marketplace?: string;
+    status?: string;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+  }): Promise<AutomationLog[]>;
+  getAutomationLog(id: string): Promise<AutomationLog | undefined>;
+  createAutomationLog(log: InsertAutomationLog): Promise<AutomationLog>;
+  getAutomationLogStats(userId: string, days?: number): Promise<{
+    totalActions: number;
+    successRate: number;
+    mostActiveMarketplace: string;
+    topActionTypes: Array<{ action: string; count: number }>;
+  }>;
+
+  // Poshmark Share Settings methods
+  getPoshmarkShareSettings(userId: string): Promise<PoshmarkShareSettings | undefined>;
+  createPoshmarkShareSettings(userId: string, settings: InsertPoshmarkShareSettings): Promise<PoshmarkShareSettings>;
+  updatePoshmarkShareSettings(userId: string, updates: Partial<PoshmarkShareSettings>): Promise<PoshmarkShareSettings>;
+  deletePoshmarkShareSettings(userId: string): Promise<void>;
+
+  // Offer Template methods
+  getOfferTemplates(userId: string, marketplace?: string): Promise<OfferTemplate[]>;
+  getOfferTemplate(id: string): Promise<OfferTemplate | undefined>;
+  getDefaultOfferTemplate(userId: string, marketplace: string, templateType: string): Promise<OfferTemplate | undefined>;
+  createOfferTemplate(userId: string, template: InsertOfferTemplate): Promise<OfferTemplate>;
+  updateOfferTemplate(id: string, updates: Partial<OfferTemplate>): Promise<OfferTemplate>;
+  deleteOfferTemplate(id: string): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
