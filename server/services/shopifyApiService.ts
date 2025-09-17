@@ -462,6 +462,30 @@ class ShopifyApiService {
   }
 
   /**
+   * Test Shopify connection by fetching shop info
+   */
+  async testConnection(connection: MarketplaceConnection): Promise<boolean> {
+    if (!connection.shopUrl || !connection.accessToken) {
+      return false;
+    }
+
+    try {
+      const url = `https://${connection.shopUrl}/admin/api/${this.apiVersion}/shop.json`;
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "X-Shopify-Access-Token": connection.accessToken,
+        },
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error("Shopify connection test failed:", error);
+      return false;
+    }
+  }
+
+  /**
    * Get shop information
    */
   async getShopInfo(connection: MarketplaceConnection): Promise<any> {
