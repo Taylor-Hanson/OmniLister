@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { marketplaceRulesService } from "./services/marketplaceRulesService";
+import { automationSchedulerService } from "./services/automationSchedulerService";
 
 const app = express();
 app.use(express.json());
@@ -71,6 +72,15 @@ app.use((req, res, next) => {
     log("🚀 Rate limiting system self-test completed successfully");
   } catch (error) {
     log(`❌ Rate limiting system self-test failed: ${error instanceof Error ? error.message : error}`);
+  }
+
+  // Initialize automation scheduler on startup
+  try {
+    log("⚙️ Initializing automation scheduler...");
+    await automationSchedulerService.initialize();
+    log("✓ Automation scheduler initialized and running");
+  } catch (error) {
+    log("⚠ Failed to initialize automation scheduler:", error);
   }
 
   const server = await registerRoutes(app);

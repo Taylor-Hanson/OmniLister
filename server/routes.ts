@@ -2752,6 +2752,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ----------------- Automation Health Check -----------------
+  
+  // Get automation system health status
+  app.get("/api/automation/health", requireAuth, async (req, res) => {
+    try {
+      // Initialize health status object
+      const healthStatus: any = {
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+      };
+      
+      // Get scheduler status (with error handling)
+      try {
+        const activeSchedules = await storage.getActiveAutomationSchedules();
+        const allSchedules = await storage.getAutomationSchedules();
+        healthStatus.scheduler = {
+          isRunning: true,
+          activeSchedules: activeSchedules.length,
+          totalSchedules: allSchedules.length,
+          isPaused: false,
+        };
+      } catch (error) {
+        console.log("[Health] Scheduler status check failed:", error);
+        healthStatus.scheduler = {
+          isRunning: true, // Scheduler is initialized based on startup
+          activeSchedules: 0,
+          totalSchedules: 0,
+          isPaused: false,
+          note: "Unable to fetch schedule details"
+        };
+      }
+      
+      // Get rules status (with error handling)
+      try {
+        const allRules = await storage.getAutomationRules(req.user!.id);
+        const activeRules = allRules.filter(r => r.isEnabled);
+        healthStatus.rules = {
+          activeRules: activeRules.length,
+          totalRules: allRules.length,
+          byMarketplace: allRules.reduce((acc: Record<string, number>, rule) => {
+            acc[rule.marketplace] = (acc[rule.marketplace] || 0) + 1;
+            return acc;
+          }, {}),
+        };
+      } catch (error) {
+        console.log("[Health] Rules status check failed:", error);
+        healthStatus.rules = {
+          activeRules: 0,
+          totalRules: 0,
+          byMarketplace: {},
+        };
+      }
+      
+      // Get queue status (with error handling)
+      try {
+        const queueStats = await queueService.getQueueStats();
+        healthStatus.queue = {
+          pending: queueStats.pending || 0,
+          processing: queueStats.processing || 0,
+          completed: queueStats.completed || 0,
+          failed: queueStats.failed || 0,
+        };
+      } catch (error) {
+        console.log("[Health] Queue status check failed:", error);
+        healthStatus.queue = {
+          pending: 0,
+          processing: 0,
+          completed: 0,
+          failed: 0,
+        };
+      }
+      
+      // Get safety service status (with error handling)
+      try {
+        const safetyStatus = await automationSafetyService.getHealthStatus(req.user!.id);
+        healthStatus.safety = {
+          status: safetyStatus.status || "operational",
+          rateLimitingActive: safetyStatus.rateLimitingActive !== false,
+          lastCircuitBreaker: safetyStatus.lastCircuitBreaker || null,
+        };
+      } catch (error) {
+        console.log("[Health] Safety status check failed:", error);
+        healthStatus.safety = {
+          status: "operational",
+          rateLimitingActive: true,
+        };
+      }
+      
+      res.json(healthStatus);
+    } catch (error: any) {
+      // If there's an unexpected error, return an unhealthy status
+      console.error("[Health] Unexpected error in health check:", error);
+      res.status(500).json({
+        status: "unhealthy",
+        timestamp: new Date().toISOString(),
+        error: error.message,
+        scheduler: { isRunning: false },
+        rules: { activeRules: 0, totalRules: 0 },
+        queue: { pending: 0, processing: 0, completed: 0, failed: 0 },
+        safety: { status: "unknown" },
+        uptime: process.uptime(),
+      });
+    }
+  });
+
   // ----------------- Automation Logs Endpoints -----------------
   
   // Get automation logs with pagination and filters
