@@ -21,6 +21,7 @@ import AutoDelist from "@/pages/auto-delist";
 import Webhooks from "@/pages/webhooks";
 import NotFound from "@/pages/not-found";
 import Pricing from "@/pages/pricing";
+import Connections from "@/pages/connections";
 
 function PrivateRoute({ component: Component, ...rest }: any) {
   const { user, isLoading } = useAuth();
@@ -52,6 +53,7 @@ function Router() {
             <Route path="/" component={Dashboard} />
             <Route path="/dashboard" component={Dashboard} />
             <Route path="/pricing" component={Pricing} />
+            <Route path="/connections" component={Connections} />
             <Route path="/create-listing" component={CreateListing} />
             <Route path="/bulk-manager" component={BulkManager} />
             <Route path="/analytics" component={Analytics} />
