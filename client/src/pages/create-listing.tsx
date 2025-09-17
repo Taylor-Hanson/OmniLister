@@ -192,7 +192,6 @@ export default function CreateListing() {
   });
 
   const onSubmit = async (data: any) => {
-    console.log('Form submitted with data:', data);
     try {
       let imageURLs = images;
       
@@ -225,6 +224,7 @@ export default function CreateListing() {
 
       const listingData = {
         ...normalizedData,
+        price: parseFloat(normalizedData.price) || 0, // Convert string to number
         images: imageURLs,
       };
 
@@ -1011,20 +1011,15 @@ export default function CreateListing() {
                         className="w-full"
                         disabled={createListingMutation.isPending || postListingMutation.isPending}
                         data-testid="button-save-draft"
-                        onClick={() => {
-                          console.log('Button clicked');
-                          console.log('Form errors:', form.formState.errors);
-                          console.log('Form values:', form.getValues());
-                        }}
                       >
                         {createListingMutation.isPending || postListingMutation.isPending ? (
                           <>
-                            <i className="fas fa-spinner fa-spin mr-2"></i>
+                            <span className="mr-2">⏳</span>
                             {selectedMarketplaces.length > 0 ? "Posting..." : "Saving..."}
                           </>
                         ) : (
                           <>
-                            <i className="fas fa-save mr-2"></i>
+                            <span className="mr-2">💾</span>
                             {selectedMarketplaces.length > 0 ? "Post to Marketplaces" : "Save as Draft"}
                           </>
                         )}
