@@ -128,6 +128,212 @@ class BaseMarketplaceClient implements MarketplaceClient {
   }
 }
 
+// Specific implementation for Shopify
+class ShopifyClient extends BaseMarketplaceClient {
+  private apiVersion: string;
+
+  constructor() {
+    super("shopify");
+    this.apiVersion = "2024-01";
+  }
+
+  getAuthUrl(): string {
+    // Shopify uses OAuth with shop-specific URLs
+    const clientId = process.env.SHOPIFY_API_KEY || "demo_api_key";
+    const scopes = "read_products,write_products,read_inventory,write_inventory";
+    const redirectUri = process.env.SHOPIFY_REDIRECT_URI || "https://crosslistpro.com/callback";
+    
+    // This URL would need the shop domain to be complete
+    return `https://{shop}.myshopify.com/admin/oauth/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${redirectUri}`;
+  }
+
+  async exchangeToken(code: string): Promise<{ accessToken: string; refreshToken?: string; expiresAt?: Date }> {
+    // Shopify access tokens don't expire unless revoked
+    if (!process.env.SHOPIFY_API_KEY || process.env.SHOPIFY_API_KEY === "demo_api_key") {
+      return super.exchangeToken(code);
+    }
+
+    // In production, would make actual API call to Shopify
+    return {
+      accessToken: `shpat_${Date.now()}`,
+      // Shopify doesn't use refresh tokens - access tokens are permanent until revoked
+      expiresAt: undefined,
+    };
+  }
+
+  async refreshToken(refreshToken: string): Promise<{ accessToken: string; expiresAt?: Date }> {
+    // Shopify doesn't use refresh tokens - access tokens are permanent
+    return {
+      accessToken: refreshToken, // Return the same token
+      expiresAt: undefined,
+    };
+  }
+
+  async createListing(listing: Listing, connection: MarketplaceConnection): Promise<{ externalId: string; url: string }> {
+    if (!connection.shopUrl || !connection.accessToken) {
+      throw new Error("Shopify shop URL and access token are required");
+    }
+
+    // Skip API calls if using demo credentials
+    if (!process.env.SHOPIFY_API_KEY || process.env.SHOPIFY_API_KEY === "demo_api_key") {
+      return super.createListing(listing, connection);
+    }
+
+    try {
+      const productData = this.mapToShopifyProduct(listing);
+      
+      const response = await fetch(`https://${connection.shopUrl}/admin/api/${this.apiVersion}/products.json`, {
+        method: "POST",
+        headers: {
+          "X-Shopify-Access-Token": connection.accessToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ product: productData }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Shopify API Error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const product = data.product;
+
+      return {
+        externalId: product.id.toString(),
+        url: `https://${connection.shopUrl}/products/${product.handle}`,
+      };
+    } catch (error: any) {
+      console.error("Shopify listing creation failed:", error);
+      throw new Error(`Shopify API Error: ${error.message || "Unknown error"}`);
+    }
+  }
+
+  async updateListing(externalId: string, listing: Partial<Listing>, connection: MarketplaceConnection): Promise<void> {
+    if (!connection.shopUrl || !connection.accessToken) {
+      throw new Error("Shopify shop URL and access token are required");
+    }
+
+    if (!process.env.SHOPIFY_API_KEY || process.env.SHOPIFY_API_KEY === "demo_api_key") {
+      return super.updateListing(externalId, listing, connection);
+    }
+
+    try {
+      const productData = this.mapToShopifyProduct(listing as Listing);
+      
+      const response = await fetch(`https://${connection.shopUrl}/admin/api/${this.apiVersion}/products/${externalId}.json`, {
+        method: "PUT",
+        headers: {
+          "X-Shopify-Access-Token": connection.accessToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ product: productData }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Shopify API Error: ${response.statusText}`);
+      }
+    } catch (error: any) {
+      console.error("Shopify listing update failed:", error);
+      throw new Error(`Shopify API Error: ${error.message || "Unknown error"}`);
+    }
+  }
+
+  async deleteListing(externalId: string, connection: MarketplaceConnection): Promise<void> {
+    if (!connection.shopUrl || !connection.accessToken) {
+      throw new Error("Shopify shop URL and access token are required");
+    }
+
+    if (!process.env.SHOPIFY_API_KEY || process.env.SHOPIFY_API_KEY === "demo_api_key") {
+      return super.deleteListing(externalId, connection);
+    }
+
+    try {
+      const response = await fetch(`https://${connection.shopUrl}/admin/api/${this.apiVersion}/products/${externalId}.json`, {
+        method: "DELETE",
+        headers: {
+          "X-Shopify-Access-Token": connection.accessToken,
+        },
+      });
+
+      if (!response.ok && response.status !== 404) {
+        throw new Error(`Shopify API Error: ${response.statusText}`);
+      }
+    } catch (error: any) {
+      console.error("Shopify listing deletion failed:", error);
+      throw new Error(`Shopify API Error: ${error.message || "Unknown error"}`);
+    }
+  }
+
+  private mapToShopifyProduct(listing: Listing): any {
+    const product: any = {
+      title: listing.title,
+      body_html: listing.description || listing.listingDescription,
+      vendor: listing.vendor || listing.brand || "Default Vendor",
+      product_type: listing.productType || listing.category || "General",
+      handle: listing.shopifyHandle,
+      tags: listing.tags ? listing.tags.join(", ") : "",
+      status: listing.status === "active" ? "active" : "draft",
+    };
+
+    // Add SEO fields if present
+    if (listing.metaTitle || listing.metaDescription) {
+      product.metafields_global_title_tag = listing.metaTitle || listing.title;
+      product.metafields_global_description_tag = listing.metaDescription || listing.description;
+    }
+
+    // Handle variants
+    if (listing.variants && Array.isArray(listing.variants)) {
+      product.variants = listing.variants;
+    } else {
+      // Create a default variant if none exist
+      product.variants = [{
+        price: listing.price?.toString() || "0.00",
+        sku: listing.mpn || `SKU-${Date.now()}`,
+        inventory_quantity: listing.quantity || 1,
+        weight: listing.weight ? parseFloat(listing.weight.toString()) : undefined,
+        weight_unit: listing.weightUnit || "lb",
+        requires_shipping: listing.requiresShipping !== false,
+      }];
+    }
+
+    // Handle product options
+    if (listing.options && Array.isArray(listing.options)) {
+      product.options = listing.options;
+    }
+
+    // Handle images
+    if (listing.images && Array.isArray(listing.images)) {
+      product.images = listing.images.map((url: string) => ({ src: url }));
+    }
+
+    return product;
+  }
+
+  async testConnection(connection: MarketplaceConnection): Promise<boolean> {
+    if (!connection.shopUrl || !connection.accessToken) {
+      return false;
+    }
+
+    if (!process.env.SHOPIFY_API_KEY || process.env.SHOPIFY_API_KEY === "demo_api_key") {
+      return true; // Skip actual API call for demo
+    }
+
+    try {
+      const response = await fetch(`https://${connection.shopUrl}/admin/api/${this.apiVersion}/shop.json`, {
+        method: "GET",
+        headers: {
+          "X-Shopify-Access-Token": connection.accessToken,
+        },
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error("Shopify connection test failed:", error);
+      return false;
+    }
+  }
+}
+
 // Specific implementation for eBay
 class EbayClient extends BaseMarketplaceClient {
   private clientId: string;
@@ -488,6 +694,7 @@ class MarketplaceService {
   constructor() {
     // Initialize specific clients
     this.clients.set("ebay", new EbayClient());
+    this.clients.set("shopify", new ShopifyClient());
     
     // Initialize base clients for all other marketplaces
     Object.keys(marketplaces).forEach(marketplaceId => {
@@ -665,7 +872,7 @@ class MarketplaceService {
    */
   private shouldUseRateLimiting(marketplace: string): boolean {
     // Use rate limiting for ALL marketplaces to ensure proper rate limiting across the platform
-    const marketplacesWithRateLimit = ['ebay', 'poshmark', 'mercari', 'facebook', 'depop', 'vinted', 'grailed', 'stockx', 'goat', 'etsy', 'amazon', 'reverb', 'discogs', 'tcgplayer'];
+    const marketplacesWithRateLimit = ['ebay', 'poshmark', 'mercari', 'facebook', 'depop', 'vinted', 'grailed', 'stockx', 'goat', 'etsy', 'amazon', 'shopify', 'reverb', 'discogs', 'tcgplayer'];
     return marketplacesWithRateLimit.includes(marketplace.toLowerCase());
   }
 

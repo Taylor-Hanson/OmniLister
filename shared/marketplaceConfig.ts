@@ -157,6 +157,22 @@ export const marketplaces: Record<string, MarketplaceConfig> = {
     apiAvailable: true,
     popular: true,
   },
+  shopify: {
+    id: "shopify",
+    name: "Shopify",
+    description: "E-commerce platform for online stores",
+    category: "general",
+    icon: "fas fa-shopping-cart",
+    color: "bg-green-600",
+    authType: "oauth",
+    features: ["Multi-channel Sales", "Product Variants", "SEO Optimization", "Inventory Sync"],
+    requiredCredentials: [
+      { label: "Shop URL", key: "shopUrl", type: "text", placeholder: "yourshop.myshopify.com" },
+      { label: "Access Token", key: "accessToken", type: "password", placeholder: "Your Shopify access token" },
+    ],
+    apiAvailable: true,
+    popular: true,
+  },
 
   // Fashion Marketplaces
   poshmark: {
