@@ -6,6 +6,9 @@ import {
 } from "@shared/schema";
 import { storage } from "../storage";
 import { poshmarkAutomationEngine } from "./poshmarkAutomationEngine";
+import { mercariAutomationEngine } from "./mercariAutomationEngine";
+import { depopAutomationEngine } from "./depopAutomationEngine";
+import { grailedAutomationEngine } from "./grailedAutomationEngine";
 import { automationSafetyService } from "./automationSafetyService";
 import { automationSchedulerService } from "./automationSchedulerService";
 import { queueService } from "./queueService";
@@ -40,6 +43,9 @@ export class AutomationService {
   constructor() {
     // Register marketplace-specific engines
     this.registerEngine("poshmark", poshmarkAutomationEngine);
+    this.registerEngine("mercari", mercariAutomationEngine);
+    this.registerEngine("depop", depopAutomationEngine);
+    this.registerEngine("grailed", grailedAutomationEngine);
     
     // Initialize scheduled automation check every minute
     setInterval(() => this.checkScheduledAutomations(), 60000);
@@ -477,6 +483,27 @@ export class AutomationService {
   getDefaultAutomationConfig(marketplace: string, actionType: string): any {
     const engine = this.engines.get(marketplace);
     return engine ? engine.getDefaultConfig(actionType) : {};
+  }
+
+  /**
+   * Get marketplace automation engine
+   */
+  getEngine(marketplace: string): MarketplaceAutomationEngine | undefined {
+    return this.engines.get(marketplace);
+  }
+
+  /**
+   * Get list of supported marketplaces with automation
+   */
+  getSupportedMarketplaces(): string[] {
+    return Array.from(this.engines.keys());
+  }
+
+  /**
+   * Validate if marketplace supports automation
+   */
+  supportsAutomation(marketplace: string): boolean {
+    return this.engines.has(marketplace);
   }
 }
 
