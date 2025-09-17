@@ -3,6 +3,41 @@ import { pgTable, text, varchar, integer, decimal, timestamp, boolean, jsonb, uu
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// eBay Condition Enums and Constants
+export const EBAY_CONDITIONS = {
+  NEW: { value: "NEW", id: 1000, label: "New", description: "Brand-new, unopened item in original packaging" },
+  LIKE_NEW: { value: "LIKE_NEW", id: 2750, label: "Like New", description: "Opened but very lightly used or unused" },
+  NEW_OTHER: { value: "NEW_OTHER", id: 1500, label: "New Other", description: "New unused item, missing original packaging" },
+  NEW_WITH_DEFECTS: { value: "NEW_WITH_DEFECTS", id: 1750, label: "New with Defects", description: "New unused item with defects" },
+  CERTIFIED_REFURBISHED: { value: "CERTIFIED_REFURBISHED", id: 2000, label: "Certified Refurbished", description: "Inspected and refurbished by manufacturer" },
+  EXCELLENT_REFURBISHED: { value: "EXCELLENT_REFURBISHED", id: 2010, label: "Excellent Refurbished", description: "Like new condition, refurbished by manufacturer" },
+  VERY_GOOD_REFURBISHED: { value: "VERY_GOOD_REFURBISHED", id: 2020, label: "Very Good Refurbished", description: "Minimal wear, refurbished by manufacturer" },
+  GOOD_REFURBISHED: { value: "GOOD_REFURBISHED", id: 2030, label: "Good Refurbished", description: "Moderate wear, refurbished by manufacturer" },
+  SELLER_REFURBISHED: { value: "SELLER_REFURBISHED", id: 2500, label: "Seller Refurbished", description: "Restored to working order by seller" },
+  USED_EXCELLENT: { value: "USED_EXCELLENT", id: 3000, label: "Used - Excellent", description: "Used but in excellent condition" },
+  USED_VERY_GOOD: { value: "USED_VERY_GOOD", id: 4000, label: "Used - Very Good", description: "Used but in very good condition" },
+  USED_GOOD: { value: "USED_GOOD", id: 5000, label: "Used - Good", description: "Used but in good condition" },
+  USED_ACCEPTABLE: { value: "USED_ACCEPTABLE", id: 6000, label: "Used - Acceptable", description: "Used, in acceptable condition" },
+  FOR_PARTS_OR_NOT_WORKING: { value: "FOR_PARTS_OR_NOT_WORKING", id: 7000, label: "For Parts or Not Working", description: "Not fully functioning, for parts or repair" },
+  PRE_OWNED_EXCELLENT: { value: "PRE_OWNED_EXCELLENT", id: 2990, label: "Pre-owned - Excellent", description: "Previously owned, excellent condition (apparel)" },
+  PRE_OWNED_FAIR: { value: "PRE_OWNED_FAIR", id: 3010, label: "Pre-owned - Fair", description: "Previously owned, fair condition (apparel)" }
+} as const;
+
+export const LISTING_FORMATS = {
+  FIXED_PRICE: "FIXED_PRICE",
+  AUCTION: "AUCTION"
+} as const;
+
+export const LISTING_DURATIONS = {
+  GTC: "GTC", // Good Till Cancelled
+  DAYS_1: "DAYS_1",
+  DAYS_3: "DAYS_3", 
+  DAYS_5: "DAYS_5",
+  DAYS_7: "DAYS_7",
+  DAYS_10: "DAYS_10",
+  DAYS_30: "DAYS_30"
+} as const;
+
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   email: text("email").notNull().unique(),
@@ -40,17 +75,62 @@ export const marketplaceConnections = pgTable("marketplace_connections", {
 export const listings = pgTable("listings", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  
+  // Basic Product Information
   title: text("title").notNull(),
   description: text("description"),
+  subtitle: text("subtitle"), // eBay subtitle feature (55 chars max)
+  listingDescription: text("listing_description"), // Separate from product description
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  condition: text("condition"), // new, used, refurbished, etc.
+  quantity: integer("quantity").default(1),
+  images: jsonb("images"), // array of image URLs
+  
+  // Enhanced Condition System
+  condition: text("condition"), // eBay condition enum (NEW, USED_EXCELLENT, etc.)
+  conditionDescription: text("condition_description"), // Detailed condition explanation
+  conditionId: integer("condition_id"), // eBay condition ID (1000, 3000, etc.)
+  
+  // Product Identification (eBay Requirements)
+  gtin: text("gtin"), // Global Trade Item Number
+  upc: text("upc"), // Universal Product Code
+  ean: text("ean"), // European Article Number
+  isbn: text("isbn"), // For books
+  mpn: text("mpn"), // Manufacturer Part Number
+  epid: text("epid"), // eBay Product ID (preferred)
+  
+  // Product Details
   category: text("category"),
   brand: text("brand"),
   size: text("size"),
   color: text("color"),
   material: text("material"),
-  quantity: integer("quantity").default(1),
-  images: jsonb("images"), // array of image URLs
+  itemSpecifics: jsonb("item_specifics"), // Dynamic name-value pairs for eBay
+  
+  // Shipping & Package Information
+  packageWeight: decimal("package_weight", { precision: 8, scale: 3 }), // Weight in pounds/kg
+  packageDimensions: jsonb("package_dimensions"), // {length, width, height, unit}
+  
+  // eBay Listing Policies
+  fulfillmentPolicyId: text("fulfillment_policy_id"),
+  paymentPolicyId: text("payment_policy_id"),
+  returnPolicyId: text("return_policy_id"),
+  merchantLocationKey: text("merchant_location_key"),
+  
+  // Advanced Listing Options
+  listingFormat: text("listing_format").default("FIXED_PRICE"), // FIXED_PRICE, AUCTION
+  listingDuration: text("listing_duration").default("GTC"), // Good Till Cancelled
+  startPrice: decimal("start_price", { precision: 10, scale: 2 }), // For auctions
+  reservePrice: decimal("reserve_price", { precision: 10, scale: 2 }),
+  buyItNowPrice: decimal("buy_it_now_price", { precision: 10, scale: 2 }),
+  
+  // Scheduling
+  scheduledStartTime: timestamp("scheduled_start_time"),
+  scheduledEndTime: timestamp("scheduled_end_time"),
+  
+  // Store Categories
+  storeCategoryNames: text("store_category_names").array(),
+  
+  // System Fields
   status: text("status").default("draft"), // draft, active, sold, deleted
   aiGenerated: boolean("ai_generated").default(false),
   originalImageUrl: text("original_image_url"),
@@ -617,18 +697,109 @@ export const insertMarketplaceConnectionSchema = createInsertSchema(marketplaceC
   settings: true,
 });
 
-export const insertListingSchema = createInsertSchema(listings).pick({
+// eBay condition validation schema
+export const ebayConditionSchema = z.enum([
+  "NEW", "LIKE_NEW", "NEW_OTHER", "NEW_WITH_DEFECTS",
+  "CERTIFIED_REFURBISHED", "EXCELLENT_REFURBISHED", "VERY_GOOD_REFURBISHED", 
+  "GOOD_REFURBISHED", "SELLER_REFURBISHED",
+  "USED_EXCELLENT", "USED_VERY_GOOD", "USED_GOOD", "USED_ACCEPTABLE",
+  "FOR_PARTS_OR_NOT_WORKING", "PRE_OWNED_EXCELLENT", "PRE_OWNED_FAIR"
+]);
+
+// Package dimensions validation schema
+export const packageDimensionsSchema = z.object({
+  length: z.number().positive(),
+  width: z.number().positive(), 
+  height: z.number().positive(),
+  unit: z.enum(["inches", "cm"]).default("inches")
+}).optional();
+
+// Item specifics validation schema
+export const itemSpecificsSchema = z.array(z.object({
+  name: z.string().min(1),
+  value: z.string().min(1)
+})).optional();
+
+export const insertListingSchema = createInsertSchema(listings, {
+  // Enhanced validation for new fields
+  condition: ebayConditionSchema.optional(),
+  conditionDescription: z.string().max(1000).optional(),
+  conditionId: z.number().min(1000).max(7000).optional(),
+  subtitle: z.string().max(55).optional(), // eBay subtitle limit
+  gtin: z.string().length(14).optional(), // GTIN-14 standard
+  upc: z.string().length(12).optional(), // UPC-A standard  
+  ean: z.string().length(13).optional(), // EAN-13 standard
+  isbn: z.string().regex(/^(?:\d{9}[\dX]|\d{13})$/).optional(), // ISBN-10 or ISBN-13
+  mpn: z.string().max(65).optional(),
+  epid: z.string().optional(),
+  packageWeight: z.number().positive().max(150).optional(), // Max 150 lbs
+  packageDimensions: packageDimensionsSchema,
+  itemSpecifics: itemSpecificsSchema,
+  listingFormat: z.enum(["FIXED_PRICE", "AUCTION"]).default("FIXED_PRICE"),
+  listingDuration: z.enum(["GTC", "DAYS_1", "DAYS_3", "DAYS_5", "DAYS_7", "DAYS_10", "DAYS_30"]).default("GTC"),
+  startPrice: z.number().positive().optional(),
+  reservePrice: z.number().positive().optional(),
+  buyItNowPrice: z.number().positive().optional(),
+  storeCategoryNames: z.array(z.string()).optional(),
+}).pick({
+  // Basic Product Information
   title: true,
   description: true,
+  subtitle: true,
+  listingDescription: true,
   price: true,
+  quantity: true,
+  images: true,
+  
+  // Enhanced Condition System
   condition: true,
+  conditionDescription: true,
+  conditionId: true,
+  
+  // Product Identification (eBay Requirements)
+  gtin: true,
+  upc: true,
+  ean: true,
+  isbn: true,
+  mpn: true,
+  epid: true,
+  
+  // Product Details
   category: true,
   brand: true,
   size: true,
   color: true,
   material: true,
-  quantity: true,
-  images: true,
+  itemSpecifics: true,
+  
+  // Shipping & Package Information
+  packageWeight: true,
+  packageDimensions: true,
+  
+  // eBay Listing Policies
+  fulfillmentPolicyId: true,
+  paymentPolicyId: true,
+  returnPolicyId: true,
+  merchantLocationKey: true,
+  
+  // Advanced Listing Options
+  listingFormat: true,
+  listingDuration: true,
+  startPrice: true,
+  reservePrice: true,
+  buyItNowPrice: true,
+  
+  // Scheduling
+  scheduledStartTime: true,
+  scheduledEndTime: true,
+  
+  // Store Categories
+  storeCategoryNames: true,
+}).extend({
+  // Custom validation rules
+  condition: ebayConditionSchema.optional(),
+  packageDimensions: packageDimensionsSchema,
+  itemSpecifics: itemSpecificsSchema,
 });
 
 export const insertListingPostSchema = createInsertSchema(listingPosts).pick({
