@@ -372,7 +372,7 @@ export default function CreateListing() {
                           type="number"
                           step="0.01"
                           min="0"
-                          {...form.register("price", { valueAsNumber: true })}
+                          {...form.register("price")}
                           placeholder="0.00"
                           className={form.formState.errors.price ? "border-destructive" : ""}
                         />
