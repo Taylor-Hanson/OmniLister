@@ -4,6 +4,7 @@ import {
   type InsertAutomationSchedule
 } from "@shared/schema";
 import { storage } from "../storage";
+import { queueService } from "./queueService";
 import * as cron from "cron-parser";
 
 export interface ScheduledAutomation {
@@ -349,18 +350,13 @@ export class AutomationSchedulerService {
         executionCount: (schedule.executionCount || 0) + 1,
       });
 
-      // Queue the automation job
-      await storage.createJob(rule.userId, {
-        type: "automation_execute",
-        status: "pending",
-        data: {
-          ruleId: rule.id,
-          scheduleId: schedule.id,
-          triggeredBy: "scheduled",
-        },
-        priority: schedule.priority || 5,
-        scheduledFor: new Date(),
-      });
+      // Queue the automation job using queueService
+      await queueService.createAutomationJob(
+        rule.userId,
+        rule.id,
+        "scheduled",
+        schedule.priority || 5
+      );
 
       console.log(`[AutomationScheduler] Queued automation job for rule ${rule.id}`);
 
