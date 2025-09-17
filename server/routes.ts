@@ -452,6 +452,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // eBay Account Policies endpoints
+  app.get("/api/ebay/policies", requireAuth, async (req, res) => {
+    try {
+      const connection = await storage.getMarketplaceConnection(req.user!.id, "ebay");
+      
+      if (!connection || !connection.isConnected) {
+        return res.status(404).json({ error: "eBay connection not found" });
+      }
+
+      const { ebayApiService } = await import("./services/ebayApiService");
+      const policies = await ebayApiService.fetchAccountPolicies(connection);
+      
+      res.json(policies);
+    } catch (error: any) {
+      console.error('Error fetching eBay policies:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/ebay/default-policies", requireAuth, async (req, res) => {
+    try {
+      const connection = await storage.getMarketplaceConnection(req.user!.id, "ebay");
+      
+      if (!connection || !connection.isConnected) {
+        return res.status(404).json({ error: "eBay connection not found" });
+      }
+
+      const { ebayApiService } = await import("./services/ebayApiService");
+      const policies = await ebayApiService.fetchAccountPolicies(connection);
+      const defaultPolicies = ebayApiService.getDefaultPolicies(policies);
+      
+      res.json(defaultPolicies);
+    } catch (error: any) {
+      console.error('Error fetching eBay default policies:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/ebay/policies/cache", requireAuth, async (req, res) => {
+    try {
+      const { ebayApiService } = await import("./services/ebayApiService");
+      ebayApiService.clearPoliciesCache(req.user!.id);
+      
+      res.json({ success: true, message: "eBay policies cache cleared" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Listing routes
   app.get("/api/listings", requireAuth, async (req, res) => {
     try {
