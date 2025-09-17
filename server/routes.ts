@@ -15,9 +15,18 @@ import { patternAnalysisService } from "./services/patternAnalysisService";
 import { recommendationService } from "./services/recommendationService";
 import { webhookService } from "./services/webhookService";
 import { requireAuth, optionalAuth, requirePlan } from "./middleware/auth";
-import { insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema, insertSyncSettingsSchema, insertSyncRuleSchema, insertAutoDelistRuleSchema } from "@shared/schema";
+import { 
+  insertUserSchema, insertListingSchema, insertMarketplaceConnectionSchema, 
+  insertSyncSettingsSchema, insertSyncRuleSchema, insertAutoDelistRuleSchema,
+  insertAutomationRuleSchema, insertAutomationScheduleSchema, insertAutomationLogSchema,
+  insertPoshmarkShareSettingsSchema, insertOfferTemplateSchema
+} from "@shared/schema";
 import { hashPassword, verifyPassword, generateToken, validatePassword, verifyToken } from "./auth";
 import { ObjectStorageService } from "./objectStorage";
+import { automationService } from "./services/automationService";
+import { automationSchedulerService } from "./services/automationSchedulerService";
+import { automationSafetyService } from "./services/automationSafetyService";
+import { poshmarkAutomationEngine } from "./services/poshmarkAutomationEngine";
 
 // Stripe client - only initialized if API key is available
 let stripe: Stripe | null = null;
@@ -2445,6 +2454,733 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error: any) {
       console.error('Test webhook error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ============================================================================
+  // AUTOMATION MANAGEMENT API ROUTES
+  // ============================================================================
+
+  // ----------------- Automation Rules Endpoints -----------------
+  
+  // Get all automation rules for the user
+  app.get("/api/automation/rules", requireAuth, async (req, res) => {
+    try {
+      const { marketplace } = req.query;
+      const rules = await storage.getAutomationRules(
+        req.user!.id,
+        marketplace as string | undefined
+      );
+      res.json(rules);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get rules for specific marketplace
+  app.get("/api/automation/rules/:marketplace", requireAuth, async (req, res) => {
+    try {
+      const rules = await storage.getAutomationRules(
+        req.user!.id,
+        req.params.marketplace
+      );
+      res.json(rules);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create new automation rule
+  app.post("/api/automation/rules", requireAuth, async (req, res) => {
+    try {
+      const ruleData = insertAutomationRuleSchema.parse(req.body);
+      const rule = await automationService.createAutomationRule(
+        req.user!.id,
+        ruleData
+      );
+      
+      // Send WebSocket notification
+      websocketService.broadcast(req.user!.id, {
+        type: 'automation_rule_created',
+        data: rule
+      });
+      
+      // Log the action
+      await storage.createAuditLog({
+        userId: req.user!.id,
+        action: 'automation_rule_created',
+        resource: 'automation_rule',
+        resourceId: rule.id,
+        details: { ruleName: rule.ruleName, marketplace: rule.marketplace }
+      });
+      
+      res.json(rule);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Update existing automation rule
+  app.put("/api/automation/rules/:id", requireAuth, async (req, res) => {
+    try {
+      // Verify ownership
+      const existingRule = await storage.getAutomationRule(req.params.id);
+      if (!existingRule || existingRule.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Automation rule not found" });
+      }
+      
+      const updatedRule = await automationService.updateAutomationRule(
+        req.params.id,
+        req.body
+      );
+      
+      // Send WebSocket notification
+      websocketService.broadcast(req.user!.id, {
+        type: 'automation_rule_updated',
+        data: updatedRule
+      });
+      
+      res.json(updatedRule);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Delete automation rule
+  app.delete("/api/automation/rules/:id", requireAuth, async (req, res) => {
+    try {
+      // Verify ownership
+      const rule = await storage.getAutomationRule(req.params.id);
+      if (!rule || rule.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Automation rule not found" });
+      }
+      
+      await storage.deleteAutomationRule(req.params.id);
+      
+      // Send WebSocket notification
+      websocketService.broadcast(req.user!.id, {
+        type: 'automation_rule_deleted',
+        data: { id: req.params.id }
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Manually trigger an automation rule
+  app.post("/api/automation/rules/:id/execute", requireAuth, async (req, res) => {
+    try {
+      // Verify ownership
+      const rule = await storage.getAutomationRule(req.params.id);
+      if (!rule || rule.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Automation rule not found" });
+      }
+      
+      const result = await automationService.executeAutomation(
+        req.params.id,
+        "manual"
+      );
+      
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Emergency stop all automations
+  app.post("/api/automation/rules/emergency-stop", requireAuth, async (req, res) => {
+    try {
+      await automationService.emergencyStop(req.user!.id);
+      
+      // Send WebSocket notification
+      websocketService.broadcast(req.user!.id, {
+        type: 'emergency_stop_activated',
+        data: { timestamp: new Date() }
+      });
+      
+      res.json({ 
+        success: true, 
+        message: "Emergency stop activated. All automations have been halted." 
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ----------------- Automation Schedules Endpoints -----------------
+  
+  // Get all schedules
+  app.get("/api/automation/schedules", requireAuth, async (req, res) => {
+    try {
+      const { ruleId } = req.query;
+      const schedules = await storage.getAutomationSchedules(ruleId as string | undefined);
+      
+      // Filter to only user's schedules
+      const userSchedules = await Promise.all(
+        schedules.map(async (schedule) => {
+          const rule = await storage.getAutomationRule(schedule.ruleId);
+          return rule?.userId === req.user!.id ? schedule : null;
+        })
+      );
+      
+      res.json(userSchedules.filter(Boolean));
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get active schedules
+  app.get("/api/automation/schedules/active", requireAuth, async (req, res) => {
+    try {
+      const activeSchedules = await storage.getActiveAutomationSchedules();
+      
+      // Filter to only user's schedules
+      const userSchedules = activeSchedules.filter(
+        (schedule: any) => schedule.rule?.userId === req.user!.id
+      );
+      
+      res.json(userSchedules);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create new schedule
+  app.post("/api/automation/schedules", requireAuth, async (req, res) => {
+    try {
+      const scheduleData = insertAutomationScheduleSchema.parse(req.body);
+      
+      // Verify rule ownership
+      const rule = await storage.getAutomationRule(scheduleData.ruleId);
+      if (!rule || rule.userId !== req.user!.id) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+      
+      const schedule = await automationSchedulerService.createSchedule(scheduleData);
+      res.json(schedule);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Update schedule
+  app.put("/api/automation/schedules/:id", requireAuth, async (req, res) => {
+    try {
+      const schedule = await storage.getAutomationSchedule(req.params.id);
+      if (!schedule) {
+        return res.status(404).json({ error: "Schedule not found" });
+      }
+      
+      // Verify ownership through rule
+      const rule = await storage.getAutomationRule(schedule.ruleId);
+      if (!rule || rule.userId !== req.user!.id) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+      
+      const updated = await storage.updateAutomationSchedule(req.params.id, req.body);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Delete schedule
+  app.delete("/api/automation/schedules/:id", requireAuth, async (req, res) => {
+    try {
+      const schedule = await storage.getAutomationSchedule(req.params.id);
+      if (!schedule) {
+        return res.status(404).json({ error: "Schedule not found" });
+      }
+      
+      // Verify ownership through rule
+      const rule = await storage.getAutomationRule(schedule.ruleId);
+      if (!rule || rule.userId !== req.user!.id) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+      
+      await storage.deleteAutomationSchedule(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Activate a schedule
+  app.post("/api/automation/schedules/:id/activate", requireAuth, async (req, res) => {
+    try {
+      const schedule = await storage.getAutomationSchedule(req.params.id);
+      if (!schedule) {
+        return res.status(404).json({ error: "Schedule not found" });
+      }
+      
+      // Verify ownership through rule
+      const rule = await storage.getAutomationRule(schedule.ruleId);
+      if (!rule || rule.userId !== req.user!.id) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+      
+      await automationSchedulerService.activateSchedule(schedule.ruleId);
+      const updated = await storage.updateAutomationSchedule(req.params.id, { isActive: true });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Deactivate a schedule
+  app.post("/api/automation/schedules/:id/deactivate", requireAuth, async (req, res) => {
+    try {
+      const schedule = await storage.getAutomationSchedule(req.params.id);
+      if (!schedule) {
+        return res.status(404).json({ error: "Schedule not found" });
+      }
+      
+      // Verify ownership through rule
+      const rule = await storage.getAutomationRule(schedule.ruleId);
+      if (!rule || rule.userId !== req.user!.id) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+      
+      await automationSchedulerService.deactivateSchedule(schedule.ruleId);
+      const updated = await storage.updateAutomationSchedule(req.params.id, { isActive: false });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ----------------- Automation Logs Endpoints -----------------
+  
+  // Get automation logs with pagination and filters
+  app.get("/api/automation/logs", requireAuth, async (req, res) => {
+    try {
+      const { ruleId, marketplace, status, startDate, endDate, limit = "50", page = "1" } = req.query;
+      
+      const logs = await storage.getAutomationLogs(req.user!.id, {
+        ruleId: ruleId as string,
+        marketplace: marketplace as string,
+        status: status as string,
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined,
+        limit: parseInt(limit as string)
+      });
+      
+      // Implement pagination
+      const pageNum = parseInt(page as string);
+      const pageSize = parseInt(limit as string);
+      const startIndex = (pageNum - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      const paginatedLogs = logs.slice(startIndex, endIndex);
+      
+      res.json({
+        logs: paginatedLogs,
+        total: logs.length,
+        page: pageNum,
+        pageSize,
+        totalPages: Math.ceil(logs.length / pageSize)
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get automation statistics
+  app.get("/api/automation/logs/stats", requireAuth, async (req, res) => {
+    try {
+      const { days = "7" } = req.query;
+      const stats = await storage.getAutomationLogStats(
+        req.user!.id,
+        parseInt(days as string)
+      );
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Export logs as CSV/JSON
+  app.get("/api/automation/logs/export", requireAuth, async (req, res) => {
+    try {
+      const { format = "json", startDate, endDate } = req.query;
+      
+      const logs = await storage.getAutomationLogs(req.user!.id, {
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined
+      });
+      
+      if (format === "csv") {
+        // Convert to CSV
+        const csv = [
+          "Timestamp,Rule,Marketplace,Action,Status,Items Processed,Error",
+          ...logs.map(log => 
+            `"${log.executedAt}","${log.ruleId}","${log.marketplace}","${log.actionType}","${log.status}","${log.itemsProcessed || 0}","${log.errorMessage || ''}"`
+          )
+        ].join("\n");
+        
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="automation-logs.csv"');
+        res.send(csv);
+      } else {
+        res.json(logs);
+      }
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ----------------- Poshmark-specific Endpoints -----------------
+  
+  // Get Poshmark share settings
+  app.get("/api/automation/poshmark/settings", requireAuth, async (req, res) => {
+    try {
+      const settings = await storage.getPoshmarkShareSettings(req.user!.id);
+      res.json(settings || {
+        shareTimesEnabled: [],
+        shareToFollowers: true,
+        shareToParties: false,
+        minMinutesBetweenShares: 30,
+        maxSharesPerDay: 5000,
+        randomizeOrder: true
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update Poshmark share settings
+  app.put("/api/automation/poshmark/settings", requireAuth, async (req, res) => {
+    try {
+      const settings = insertPoshmarkShareSettingsSchema.parse(req.body);
+      const updated = await storage.updatePoshmarkShareSettings(
+        req.user!.id,
+        settings
+      );
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Trigger immediate share
+  app.post("/api/automation/poshmark/share-now", requireAuth, async (req, res) => {
+    try {
+      const { listingIds, shareToFollowers = true, shareToParties = false } = req.body;
+      
+      // Create a temporary automation rule for immediate share
+      const tempRule = await automationService.createAutomationRule(req.user!.id, {
+        ruleName: "Manual Share",
+        marketplace: "poshmark",
+        ruleType: "auto_share",
+        configuration: {
+          shareToFollowers,
+          shareToParties,
+          listingIds: listingIds || []
+        },
+        isEnabled: true
+      });
+      
+      // Execute immediately
+      const result = await automationService.executeAutomation(tempRule.id, "manual");
+      
+      // Delete the temporary rule
+      await storage.deleteAutomationRule(tempRule.id);
+      
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Share to Poshmark party
+  app.post("/api/automation/poshmark/party-share", requireAuth, async (req, res) => {
+    try {
+      const { partyId, listingIds } = req.body;
+      
+      // Share to specific party
+      const result = await poshmarkAutomationEngine.shareToParty(
+        req.user!.id,
+        partyId,
+        listingIds
+      );
+      
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get upcoming Poshmark parties
+  app.get("/api/automation/poshmark/parties", requireAuth, async (req, res) => {
+    try {
+      // Get upcoming Poshmark parties
+      const parties = await poshmarkAutomationEngine.getUpcomingParties();
+      res.json(parties);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ----------------- Offer Templates Endpoints -----------------
+  
+  // Get all offer templates
+  app.get("/api/automation/templates", requireAuth, async (req, res) => {
+    try {
+      const templates = await storage.getOfferTemplates(req.user!.id);
+      res.json(templates);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create new template
+  app.post("/api/automation/templates", requireAuth, async (req, res) => {
+    try {
+      const templateData = insertOfferTemplateSchema.parse(req.body);
+      const template = await storage.createOfferTemplate(
+        req.user!.id,
+        templateData
+      );
+      res.json(template);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Update template
+  app.put("/api/automation/templates/:id", requireAuth, async (req, res) => {
+    try {
+      const template = await storage.getOfferTemplate(req.params.id);
+      if (!template || template.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      const updated = await storage.updateOfferTemplate(req.params.id, req.body);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Delete template
+  app.delete("/api/automation/templates/:id", requireAuth, async (req, res) => {
+    try {
+      const template = await storage.getOfferTemplate(req.params.id);
+      if (!template || template.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      
+      await storage.deleteOfferTemplate(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ----------------- Automation Status & Monitoring -----------------
+  
+  // Get overall automation status
+  app.get("/api/automation/status", requireAuth, async (req, res) => {
+    try {
+      const rules = await storage.getAutomationRules(req.user!.id);
+      const activeSchedules = await storage.getActiveAutomationSchedules();
+      const userSchedules = activeSchedules.filter(
+        (s: any) => rules.some(r => r.id === s.ruleId)
+      );
+      
+      const recentLogs = await storage.getAutomationLogs(req.user!.id, {
+        limit: 10
+      });
+      
+      const stats = await storage.getAutomationLogStats(req.user!.id, 7);
+      
+      res.json({
+        totalRules: rules.length,
+        activeRules: rules.filter(r => r.isEnabled).length,
+        activeSchedules: userSchedules.length,
+        recentActivity: recentLogs,
+        weeklyStats: stats,
+        status: userSchedules.length > 0 ? 'active' : 'idle'
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get automation performance metrics
+  app.get("/api/automation/metrics", requireAuth, async (req, res) => {
+    try {
+      const { days = "30", marketplace } = req.query;
+      
+      const logs = await storage.getAutomationLogs(req.user!.id, {
+        marketplace: marketplace as string,
+        startDate: new Date(Date.now() - parseInt(days as string) * 24 * 60 * 60 * 1000)
+      });
+      
+      // Calculate metrics
+      const successCount = logs.filter(l => l.status === 'success').length;
+      const failureCount = logs.filter(l => l.status === 'failed').length;
+      const totalItems = logs.reduce((sum, l) => sum + (l.itemsProcessed || 0), 0);
+      const avgExecutionTime = logs.reduce((sum, l) => sum + (l.executionTime || 0), 0) / logs.length || 0;
+      
+      // Helper functions for metrics
+      const getTopActions = (logs: any[]) => {
+        const actionCounts: Record<string, number> = {};
+        logs.forEach(log => {
+          actionCounts[log.actionType] = (actionCounts[log.actionType] || 0) + 1;
+        });
+        
+        return Object.entries(actionCounts)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5)
+          .map(([action, count]) => ({ action, count }));
+      };
+      
+      const getHourlyDistribution = (logs: any[]) => {
+        const hourCounts: number[] = new Array(24).fill(0);
+        logs.forEach(log => {
+          const hour = new Date(log.executedAt).getHours();
+          hourCounts[hour]++;
+        });
+        
+        return hourCounts.map((count, hour) => ({ hour, count }));
+      };
+      
+      res.json({
+        period: `${days} days`,
+        totalExecutions: logs.length,
+        successRate: logs.length > 0 ? (successCount / logs.length * 100).toFixed(2) : 0,
+        failureRate: logs.length > 0 ? (failureCount / logs.length * 100).toFixed(2) : 0,
+        totalItemsProcessed: totalItems,
+        averageExecutionTime: Math.round(avgExecutionTime),
+        topActions: getTopActions(logs),
+        hourlyDistribution: getHourlyDistribution(logs)
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get queue status for automation jobs
+  app.get("/api/automation/queue/status", requireAuth, async (req, res) => {
+    try {
+      const queueStatus = await queueService.getQueueStatus();
+      res.json(queueStatus);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get list of supported marketplaces
+  app.get("/api/automation/supported-marketplaces", requireAuth, async (req, res) => {
+    try {
+      const marketplaces = [
+        {
+          id: "poshmark",
+          name: "Poshmark",
+          supported: true,
+          actions: ["auto_share", "auto_follow", "auto_offer", "party_share"]
+        },
+        {
+          id: "mercari",
+          name: "Mercari",
+          supported: true,
+          actions: ["auto_share", "auto_follow", "auto_offer"]
+        },
+        {
+          id: "depop",
+          name: "Depop",
+          supported: true,
+          actions: ["auto_share", "auto_follow", "auto_offer"]
+        },
+        {
+          id: "grailed",
+          name: "Grailed",
+          supported: true,
+          actions: ["auto_share", "auto_bump"]
+        },
+        {
+          id: "ebay",
+          name: "eBay",
+          supported: false,
+          actions: []
+        },
+        {
+          id: "facebook",
+          name: "Facebook Marketplace",
+          supported: false,
+          actions: []
+        }
+      ];
+      
+      res.json(marketplaces);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ----------------- Safety & Compliance Endpoints -----------------
+  
+  // Get current rate limit status
+  app.get("/api/automation/safety/limits", requireAuth, async (req, res) => {
+    try {
+      const { marketplace } = req.query;
+      const limits = await automationSafetyService.getUserRateLimitStatus(
+        req.user!.id,
+        marketplace as string
+      );
+      res.json(limits);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update safety settings
+  app.put("/api/automation/safety/settings", requireAuth, async (req, res) => {
+    try {
+      const { enableSafetyMode, customLimits } = req.body;
+      
+      // Update user's safety settings
+      await storage.updateUser(req.user!.id, {
+        automationSafetySettings: {
+          enableSafetyMode,
+          customLimits
+        }
+      });
+      
+      res.json({ 
+        success: true,
+        message: "Safety settings updated successfully" 
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Check compliance status
+  app.get("/api/automation/safety/compliance", requireAuth, async (req, res) => {
+    try {
+      const rules = await storage.getAutomationRules(req.user!.id);
+      const complianceStatus = await Promise.all(
+        rules.map(async (rule) => {
+          const isCompliant = await automationSafetyService.checkRuleCompliance(rule);
+          return {
+            ruleId: rule.id,
+            ruleName: rule.ruleName,
+            marketplace: rule.marketplace,
+            isCompliant,
+            issues: isCompliant ? [] : await automationSafetyService.getComplianceIssues(rule)
+          };
+        })
+      );
+      
+      res.json({
+        overallCompliant: complianceStatus.every(s => s.isCompliant),
+        rules: complianceStatus
+      });
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
