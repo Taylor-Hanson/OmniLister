@@ -570,6 +570,74 @@ class ShopifyApiService {
   }
 
   /**
+   * Import specific products by ID from Shopify
+   */
+  async importSpecificProducts(
+    userId: string,
+    connection: MarketplaceConnection,
+    productIds: string[]
+  ): Promise<Listing[]> {
+    if (!connection.shopUrl || !connection.accessToken) {
+      throw new Error("Shop URL and access token are required");
+    }
+
+    const listings: Listing[] = [];
+    
+    // Fetch each product by ID
+    for (const productId of productIds) {
+      try {
+        const product = await this.getProductById(connection, productId);
+        if (product) {
+          const listing = await this.mapShopifyProductToListing(product, userId);
+          listings.push(listing);
+        }
+      } catch (error) {
+        console.error(`Failed to import product ${productId}:`, error);
+        // Continue with other products even if one fails
+      }
+    }
+
+    return listings;
+  }
+
+  /**
+   * Get a single product by ID from Shopify
+   */
+  async getProductById(
+    connection: MarketplaceConnection,
+    productId: string
+  ): Promise<ShopifyProduct | null> {
+    if (!connection.shopUrl || !connection.accessToken) {
+      throw new Error("Shop URL and access token are required");
+    }
+
+    const url = `https://${connection.shopUrl}/admin/api/${this.apiVersion}/products/${productId}.json`;
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "X-Shopify-Access-Token": connection.accessToken,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null;
+        }
+        const error = await response.json() as ShopifyError;
+        throw new Error(this.formatShopifyError(error));
+      }
+
+      const data = await response.json();
+      return data.product;
+    } catch (error: any) {
+      console.error("Shopify get product error:", error);
+      throw new Error(`Failed to fetch product: ${error.message}`);
+    }
+  }
+
+  /**
    * Helper: Map listing to Shopify product format
    */
   private mapListingToShopifyProduct(listing: Listing): Partial<ShopifyProduct> {
@@ -631,33 +699,136 @@ class ShopifyApiService {
   private async mapShopifyProductToListing(product: ShopifyProduct, userId: string): Promise<Listing> {
     const defaultVariant = product.variants?.[0];
     
+    // Build condition from tags or default to "new"
+    let condition = "new";
+    if (product.tags) {
+      const conditionTags = ["new", "used", "refurbished", "like-new", "good", "fair"];
+      const foundCondition = product.tags.toLowerCase().split(", ").find(tag => 
+        conditionTags.includes(tag)
+      );
+      if (foundCondition) condition = foundCondition;
+    }
+    
+    // Parse size from variant options or tags
+    let size = "";
+    if (defaultVariant) {
+      size = defaultVariant.option1 || defaultVariant.option2 || defaultVariant.option3 || "";
+      // Check if any option is likely a size
+      const sizeOptions = [defaultVariant.option1, defaultVariant.option2, defaultVariant.option3]
+        .filter(Boolean)
+        .find(opt => /^(XS|S|M|L|XL|XXL|[0-9]+)$/i.test(opt || ""));
+      if (sizeOptions) size = sizeOptions;
+    }
+    
+    // Parse color from options or title
+    let color = "";
+    if (product.options) {
+      const colorOption = product.options.find(opt => 
+        opt.name.toLowerCase().includes("color") || opt.name.toLowerCase().includes("colour")
+      );
+      if (colorOption && colorOption.values?.[0]) {
+        color = colorOption.values[0];
+      }
+    }
+    
+    // Build materials from tags or vendor info
+    let materials = "";
+    if (product.tags) {
+      const materialKeywords = ["cotton", "polyester", "wool", "leather", "silk", "nylon", "canvas"];
+      const foundMaterials = product.tags.toLowerCase().split(", ").filter(tag =>
+        materialKeywords.some(mat => tag.includes(mat))
+      );
+      materials = foundMaterials.join(", ");
+    }
+    
+    // Calculate pricing data
+    const basePrice = parseFloat(defaultVariant?.price || "0");
+    const comparePrice = defaultVariant?.compare_at_price ? parseFloat(defaultVariant.compare_at_price) : null;
+    
     const listing: any = {
       id: crypto.randomUUID(),
       userId,
       title: product.title,
       description: product.body_html || "",
-      price: defaultVariant?.price || "0",
+      price: basePrice,
       quantity: defaultVariant?.inventory_quantity || 0,
       images: product.images?.map(img => img.src) || [],
       
-      // Product details
+      // Product categorization
       category: product.product_type || "",
       brand: product.vendor || "",
+      condition: condition,
       
-      // Shopify-specific fields
+      // Product attributes
+      size: size,
+      color: color,
+      materials: materials,
+      sku: defaultVariant?.sku || "",
+      barcode: defaultVariant?.barcode || "",
+      
+      // Shopify-specific fields for round-trip compatibility
       shopifyProductId: product.id?.toString() || "",
       shopifyVariantId: defaultVariant?.id?.toString() || "",
       shopifyHandle: product.handle || "",
+      shopifyStatus: product.status || "active",
+      shopifyTemplateSuffix: product.template_suffix || null,
+      shopifyPublishedScope: product.published_scope || "web",
+      
+      // Additional product data
       vendor: product.vendor || "",
       productType: product.product_type || "",
       tags: product.tags?.split(", ").filter(t => t) || [],
       
-      // Product options & variants
+      // Product options & variants (store full data for re-export)
       options: product.options || [],
-      variants: product.variants || [],
+      variants: product.variants?.map(v => ({
+        id: v.id,
+        title: v.title || "",
+        price: v.price,
+        sku: v.sku || "",
+        position: v.position,
+        compareAtPrice: v.compare_at_price,
+        inventoryQuantity: v.inventory_quantity || 0,
+        option1: v.option1,
+        option2: v.option2,
+        option3: v.option3,
+        barcode: v.barcode,
+        weight: v.weight,
+        weightUnit: v.weight_unit,
+        requiresShipping: v.requires_shipping !== false,
+        taxable: v.taxable !== false,
+      })) || [],
+      
+      // Shipping & inventory
       requiresShipping: defaultVariant?.requires_shipping !== false,
-      weight: defaultVariant?.weight || null,
-      weightUnit: defaultVariant?.weight_unit || "lb",
+      weight: defaultVariant?.weight || defaultVariant?.grams ? (defaultVariant.grams / 1000) : null,
+      weightUnit: defaultVariant?.weight_unit || "kg",
+      inventoryPolicy: defaultVariant?.inventory_policy || "deny",
+      inventoryManagement: defaultVariant?.inventory_management || null,
+      fulfillmentService: defaultVariant?.fulfillment_service || "manual",
+      
+      // Pricing
+      compareAtPrice: comparePrice,
+      costPerItem: null, // Not available from basic Shopify API
+      taxable: defaultVariant?.taxable !== false,
+      
+      // SEO & Visibility
+      metaTitle: product.title, // Would need metafields API for actual SEO title
+      metaDescription: product.body_html?.substring(0, 160).replace(/<[^>]*>/g, ''), // Strip HTML
+      slug: product.handle || "",
+      publishedAt: product.published_at ? new Date(product.published_at) : null,
+      
+      // Platform tracking
+      platforms: [{
+        name: "shopify",
+        listingId: product.id?.toString() || "",
+        url: product.handle ? `https://${product.admin_graphql_api_id?.split('/').pop()}/products/${product.handle}` : "",
+        status: product.status || "active",
+        lastSyncedAt: new Date()
+      }],
+      
+      // Status
+      status: product.status === "active" ? "active" : "draft",
       
       // Timestamps
       createdAt: product.created_at ? new Date(product.created_at) : new Date(),

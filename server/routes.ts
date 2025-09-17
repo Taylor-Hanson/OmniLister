@@ -605,7 +605,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: status as "active" | "archived" | "draft",
       });
 
-      res.json(products);
+      // Return in the format expected by frontend
+      res.json({ 
+        products,
+        count: products.length,
+        connection: {
+          shopName: connection.shopName,
+          shopUrl: connection.shopUrl
+        }
+      });
     } catch (error: any) {
       console.error("Error fetching Shopify products:", error);
       res.status(500).json({ error: error.message });
@@ -637,7 +645,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/marketplaces/shopify/import", requireAuth, async (req, res) => {
     try {
-      const { limit = 50, status = "active" } = req.body;
+      const { productIds, limit = 50, status = "active" } = req.body;
       
       const connection = await storage.getMarketplaceConnection(req.user!.id, "shopify");
       if (!connection || !connection.isConnected) {
@@ -645,23 +653,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { shopifyApiService } = await import("./services/shopifyApiService");
-      const listings = await shopifyApiService.importProducts(req.user!.id, connection, {
-        limit,
-        status,
-      });
+      
+      // If specific productIds are provided, import only those products
+      let listings;
+      if (productIds && productIds.length > 0) {
+        listings = await shopifyApiService.importSpecificProducts(
+          req.user!.id, 
+          connection, 
+          productIds
+        );
+      } else {
+        // Otherwise import all products with the given filters
+        listings = await shopifyApiService.importProducts(req.user!.id, connection, {
+          limit,
+          status,
+        });
+      }
 
       // Save imported listings to database
       const savedListings = [];
+      const failedImports = [];
+      
       for (const listing of listings) {
-        const saved = await storage.createListing(listing);
-        savedListings.push(saved);
+        try {
+          const saved = await storage.createListing(listing);
+          savedListings.push(saved);
+        } catch (error: any) {
+          failedImports.push({
+            title: listing.title,
+            error: error.message
+          });
+        }
       }
 
       res.json({
         success: true,
         imported: savedListings.length,
+        failed: failedImports.length,
         listings: savedListings,
-        message: `Successfully imported ${savedListings.length} products from Shopify`,
+        failedImports,
+        message: failedImports.length > 0 
+          ? `Imported ${savedListings.length} products from Shopify (${failedImports.length} failed)`
+          : `Successfully imported ${savedListings.length} products from Shopify`,
       });
     } catch (error: any) {
       console.error("Error importing Shopify products:", error);

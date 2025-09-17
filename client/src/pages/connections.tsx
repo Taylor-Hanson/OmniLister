@@ -157,10 +157,26 @@ export default function Connections() {
     },
     onSuccess: (data) => {
       setImportStatus("success");
-      toast({
-        title: "Import successful",
-        description: `Imported ${data.imported} products from Shopify`,
-      });
+      
+      // Handle partial failures
+      if (data.failed > 0) {
+        toast({
+          title: "Import completed with issues",
+          description: `Successfully imported ${data.imported} products from Shopify. ${data.failed} products failed to import.`,
+          variant: "default",
+        });
+        
+        // Log failed imports for debugging
+        if (data.failedImports && data.failedImports.length > 0) {
+          console.error("Failed imports:", data.failedImports);
+        }
+      } else {
+        toast({
+          title: "Import successful",
+          description: `Successfully imported ${data.imported} products from Shopify`,
+        });
+      }
+      
       queryClient.invalidateQueries({ queryKey: ['/api/listings'] });
       setTimeout(() => {
         setIsImportModalOpen(false);
