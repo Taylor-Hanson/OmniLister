@@ -41,7 +41,7 @@ import {
   webhookHealthMetrics, type WebhookHealthMetrics, type InsertWebhookHealthMetrics
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, desc, gte, lte, isNull, sql } from "drizzle-orm";
+import { eq, and, or, desc, gte, lte, isNull, isNotNull, sql } from "drizzle-orm";
 import { type IStorage } from "./storage";
 import { randomUUID } from "crypto";
 
@@ -621,7 +621,11 @@ export class DatabaseStorage implements IStorage {
     let query = db.select().from(syncConflicts).where(eq(syncConflicts.userId, userId));
     
     if (resolved !== undefined) {
-      query = query.where(eq(syncConflicts.resolved, resolved));
+      if (resolved) {
+        query = query.where(isNotNull(syncConflicts.resolvedAt));
+      } else {
+        query = query.where(isNull(syncConflicts.resolvedAt));
+      }
     }
     
     return await query.orderBy(desc(syncConflicts.createdAt));
@@ -639,7 +643,6 @@ export class DatabaseStorage implements IStorage {
         ...conflict,
         id: randomUUID(),
         userId,
-        resolved: false,
         createdAt: new Date(),
       })
       .returning();
@@ -650,7 +653,6 @@ export class DatabaseStorage implements IStorage {
     const [conflict] = await db
       .update(syncConflicts)
       .set({
-        resolved: true,
         resolution,
         resolvedValue,
         resolvedAt: new Date(),
