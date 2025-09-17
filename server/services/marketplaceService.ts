@@ -3,6 +3,7 @@ import { marketplaces, type MarketplaceConfig } from "@shared/marketplaceConfig"
 import { rateLimitMiddleware, type ApiRequest, RateLimitError } from "./rateLimitMiddleware";
 import { rateLimitService } from "./rateLimitService";
 import { ebayApiService, type EbayInventoryItem, type EbayOffer, type EbayAccountPolicies } from "./ebayApiService";
+import { shopifyApiService, type ShopifyProduct } from "./shopifyApiService";
 
 export interface MarketplaceClient {
   createListing(listing: Listing, connection: MarketplaceConnection): Promise<{ externalId: string; url: string }>;
@@ -180,32 +181,26 @@ class ShopifyClient extends BaseMarketplaceClient {
     }
 
     try {
-      const productData = this.mapToShopifyProduct(listing);
-      
-      const response = await fetch(`https://${connection.shopUrl}/admin/api/${this.apiVersion}/products.json`, {
-        method: "POST",
-        headers: {
-          "X-Shopify-Access-Token": connection.accessToken,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ product: productData }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Shopify API Error: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const product = data.product;
+      // Use shopifyApiService to create the product
+      const product = await shopifyApiService.createProduct(connection, listing);
 
       return {
-        externalId: product.id.toString(),
-        url: `https://${connection.shopUrl}/products/${product.handle}`,
+        externalId: product.id ? product.id.toString() : `shopify_${Date.now()}`,
+        url: product.handle 
+          ? `https://${connection.shopUrl}/products/${product.handle}`
+          : `https://${connection.shopUrl}/admin/products/${product.id}`,
       };
     } catch (error: any) {
       console.error("Shopify listing creation failed:", error);
       throw new Error(`Shopify API Error: ${error.message || "Unknown error"}`);
     }
+  }
+
+  /**
+   * Post a listing to Shopify (alias for createListing to match other clients)
+   */
+  async postListing(listing: Listing, connection: MarketplaceConnection): Promise<{ externalId: string; url: string }> {
+    return this.createListing(listing, connection);
   }
 
   async updateListing(externalId: string, listing: Partial<Listing>, connection: MarketplaceConnection): Promise<void> {
@@ -218,20 +213,8 @@ class ShopifyClient extends BaseMarketplaceClient {
     }
 
     try {
-      const productData = this.mapToShopifyProduct(listing as Listing);
-      
-      const response = await fetch(`https://${connection.shopUrl}/admin/api/${this.apiVersion}/products/${externalId}.json`, {
-        method: "PUT",
-        headers: {
-          "X-Shopify-Access-Token": connection.accessToken,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ product: productData }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Shopify API Error: ${response.statusText}`);
-      }
+      // Use shopifyApiService to update the product
+      await shopifyApiService.updateProduct(connection, externalId, listing as Listing);
     } catch (error: any) {
       console.error("Shopify listing update failed:", error);
       throw new Error(`Shopify API Error: ${error.message || "Unknown error"}`);
@@ -248,16 +231,8 @@ class ShopifyClient extends BaseMarketplaceClient {
     }
 
     try {
-      const response = await fetch(`https://${connection.shopUrl}/admin/api/${this.apiVersion}/products/${externalId}.json`, {
-        method: "DELETE",
-        headers: {
-          "X-Shopify-Access-Token": connection.accessToken,
-        },
-      });
-
-      if (!response.ok && response.status !== 404) {
-        throw new Error(`Shopify API Error: ${response.statusText}`);
-      }
+      // Use shopifyApiService to delete the product
+      await shopifyApiService.deleteProduct(connection, externalId);
     } catch (error: any) {
       console.error("Shopify listing deletion failed:", error);
       throw new Error(`Shopify API Error: ${error.message || "Unknown error"}`);
@@ -319,14 +294,8 @@ class ShopifyClient extends BaseMarketplaceClient {
     }
 
     try {
-      const response = await fetch(`https://${connection.shopUrl}/admin/api/${this.apiVersion}/shop.json`, {
-        method: "GET",
-        headers: {
-          "X-Shopify-Access-Token": connection.accessToken,
-        },
-      });
-
-      return response.ok;
+      // Use shopifyApiService to test the connection
+      return await shopifyApiService.testConnection(connection);
     } catch (error) {
       console.error("Shopify connection test failed:", error);
       return false;

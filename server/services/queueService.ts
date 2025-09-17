@@ -169,7 +169,7 @@ class PostListingProcessor implements JobProcessor {
             });
           }
 
-          const result = await marketplaceService.createListing(listing, marketplace, connection);
+          const result = await marketplaceService.createListing(marketplace, listing, connection);
           
           // Record successful API request
           await rateLimitService.recordRequest(marketplace, true);
