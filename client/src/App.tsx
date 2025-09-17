@@ -22,6 +22,10 @@ import Webhooks from "@/pages/webhooks";
 import NotFound from "@/pages/not-found";
 import Pricing from "@/pages/pricing";
 import Connections from "@/pages/connections";
+import Automation from "@/pages/automation";
+import AutomationSettings from "@/pages/automation-settings";
+import AutomationSchedules from "@/pages/automation-schedules";
+import AutomationLogs from "@/pages/automation-logs";
 
 function PrivateRoute({ component: Component, ...rest }: any) {
   const { user, isLoading } = useAuth();
@@ -56,6 +60,10 @@ function Router() {
             <Route path="/connections" component={Connections} />
             <Route path="/create-listing" component={CreateListing} />
             <Route path="/bulk-manager" component={BulkManager} />
+            <Route path="/automation" component={Automation} />
+            <Route path="/automation-settings" component={AutomationSettings} />
+            <Route path="/automation-schedules" component={AutomationSchedules} />
+            <Route path="/automation-logs" component={AutomationLogs} />
             <Route path="/analytics" component={Analytics} />
             <Route path="/marketplaces" component={Marketplaces} />
             <Route path="/sync" component={Sync} />
