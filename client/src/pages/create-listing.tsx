@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/api";
+import { insertListingSchema, EBAY_CONDITIONS, LISTING_FORMATS, LISTING_DURATIONS } from "@shared/schema";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AIScanner from "@/components/AIScanner";
@@ -19,29 +20,30 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Plus, Minus, HelpCircle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-const listingSchema = z.object({
-  title: z.string().min(1, "Title is required").max(80, "Title must be 80 characters or less"),
-  description: z.string().min(1, "Description is required").max(1000, "Description must be 1000 characters or less"),
-  price: z.string().min(1, "Price is required"),
-  condition: z.string().min(1, "Condition is required"),
-  category: z.string().min(1, "Category is required"),
-  brand: z.string().optional(),
-  size: z.string().optional(),
-  color: z.string().optional(),
-  material: z.string().optional(),
-  quantity: z.string().default("1"),
-});
+// Use the comprehensive shared schema with conditional auction validation
+const listingFormSchema = insertListingSchema.refine(
+  (data) => {
+    if (data.listingFormat === "AUCTION") {
+      return data.startPrice !== undefined && data.startPrice > 0;
+    }
+    return true;
+  },
+  {
+    message: "Starting price is required for auction listings",
+    path: ["startPrice"],
+  }
+);
 
-type ListingForm = z.infer<typeof listingSchema>;
+type ListingForm = z.infer<typeof listingFormSchema>;
 
-const conditions = [
-  { value: "new", label: "New with tags" },
-  { value: "like new", label: "Like new" },
-  { value: "good", label: "Good" },
-  { value: "fair", label: "Fair" },
-  { value: "poor", label: "Poor" },
-];
+// eBay conditions with descriptions
+const ebayConditions = Object.values(EBAY_CONDITIONS);
+const listingFormats = Object.values(LISTING_FORMATS);
+const listingDurations = Object.values(LISTING_DURATIONS);
 
 const categories = [
   { value: "clothing", label: "Clothing" },
@@ -62,21 +64,66 @@ export default function CreateListing() {
   const [selectedMarketplaces, setSelectedMarketplaces] = useState<string[]>([]);
   const [images, setImages] = useState<string[]>([]);
   const [isAIMode, setIsAIMode] = useState(false);
+  const [packageUnit, setPackageUnit] = useState<"inches" | "cm">("inches");
+  const [selectedCondition, setSelectedCondition] = useState<string>("");
 
   const form = useForm<ListingForm>({
-    resolver: zodResolver(listingSchema),
+    resolver: zodResolver(listingFormSchema),
     defaultValues: {
+      // Basic Product Information
       title: "",
       description: "",
-      price: "",
-      condition: "",
+      subtitle: "",
+      listingDescription: "",
+      price: "0",
+      quantity: 1,
+      
+      // Enhanced Condition System
+      condition: undefined,
+      conditionDescription: "",
+      conditionId: undefined,
+      
+      // Product Identification
+      gtin: "",
+      upc: "",
+      ean: "",
+      isbn: "",
+      mpn: "",
+      epid: "",
+      
+      // Product Details
       category: "",
       brand: "",
       size: "",
       color: "",
       material: "",
-      quantity: "1",
+      itemSpecifics: [],
+      
+      // Shipping & Package Information
+      packageWeight: undefined,
+      packageDimensions: undefined,
+      
+      // eBay Listing Policies
+      fulfillmentPolicyId: "",
+      paymentPolicyId: "",
+      returnPolicyId: "",
+      merchantLocationKey: "",
+      
+      // Advanced Listing Options
+      listingFormat: "FIXED_PRICE",
+      listingDuration: "GTC",
+      startPrice: undefined,
+      reservePrice: undefined,
+      buyItNowPrice: undefined,
+      
+      // Store Categories
+      storeCategoryNames: [],
     },
+  });
+
+  const { fields: itemSpecificFields, append: appendItemSpecific, remove: removeItemSpecific } = useFieldArray({
+    control: form.control,
+    name: "itemSpecifics"
   });
 
   const { data: marketplaces = [] } = useQuery({
@@ -143,7 +190,7 @@ export default function CreateListing() {
     },
   });
 
-  const onSubmit = async (data: ListingForm) => {
+  const onSubmit = async (data: any) => {
     try {
       let imageURLs = images;
       
@@ -152,10 +199,30 @@ export default function CreateListing() {
         imageURLs = uploadResult.objectPaths;
       }
 
+      // Normalize package weight and dimensions to consistent units
+      let normalizedData = { ...data };
+      
+      // Normalize package weight to pounds (lbs)
+      if (normalizedData.packageWeight && packageUnit === "cm") {
+        // Convert kg to lbs (1 kg = 2.20462 lbs)
+        normalizedData.packageWeight = normalizedData.packageWeight * 2.20462;
+      }
+      
+      // Normalize package dimensions to inches
+      if (normalizedData.packageDimensions && normalizedData.packageDimensions.unit === "cm") {
+        // Convert cm to inches (1 cm = 0.393701 inches)
+        const factor = 0.393701;
+        normalizedData.packageDimensions = {
+          ...normalizedData.packageDimensions,
+          length: normalizedData.packageDimensions.length * factor,
+          width: normalizedData.packageDimensions.width * factor,
+          height: normalizedData.packageDimensions.height * factor,
+          unit: "inches"
+        };
+      }
+
       const listingData = {
-        ...data,
-        price: parseFloat(data.price).toString(),
-        quantity: parseInt(data.quantity),
+        ...normalizedData,
         images: imageURLs,
       };
 
@@ -219,7 +286,7 @@ export default function CreateListing() {
     });
   };
 
-  const connectedMarketplaces = marketplaces.filter((m: any) => m.isConnected);
+  const connectedMarketplaces = (marketplaces as any[]).filter((m: any) => m.isConnected);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
@@ -262,6 +329,24 @@ export default function CreateListing() {
                     </div>
 
                     <div>
+                      <Label htmlFor="subtitle">Subtitle (Optional)</Label>
+                      <Input
+                        id="subtitle"
+                        data-testid="input-subtitle"
+                        {...form.register("subtitle")}
+                        placeholder="Optional subtitle (55 chars max)"
+                        maxLength={55}
+                        className={form.formState.errors.subtitle ? "border-destructive" : ""}
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {form.watch("subtitle")?.length || 0}/55 characters
+                      </p>
+                      {form.formState.errors.subtitle && (
+                        <p className="text-destructive text-sm mt-1">{form.formState.errors.subtitle.message}</p>
+                      )}
+                    </div>
+
+                    <div>
                       <Label htmlFor="description">Description *</Label>
                       <Textarea
                         id="description"
@@ -285,7 +370,7 @@ export default function CreateListing() {
                           type="number"
                           step="0.01"
                           min="0"
-                          {...form.register("price")}
+                          {...form.register("price", { valueAsNumber: true })}
                           placeholder="0.00"
                           className={form.formState.errors.price ? "border-destructive" : ""}
                         />
@@ -301,7 +386,7 @@ export default function CreateListing() {
                           data-testid="input-quantity"
                           type="number"
                           min="1"
-                          {...form.register("quantity")}
+                          {...form.register("quantity", { valueAsNumber: true })}
                           placeholder="1"
                         />
                       </div>
@@ -310,14 +395,25 @@ export default function CreateListing() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <Label>Condition *</Label>
-                        <Select onValueChange={(value) => form.setValue("condition", value)}>
+                        <Select onValueChange={(value: any) => {
+                          form.setValue("condition", value);
+                          setSelectedCondition(value);
+                          // Auto-set condition ID when condition is selected
+                          const condition = ebayConditions.find(c => c.value === value);
+                          if (condition) {
+                            form.setValue("conditionId", condition.id);
+                          }
+                        }}>
                           <SelectTrigger data-testid="select-condition">
                             <SelectValue placeholder="Select condition" />
                           </SelectTrigger>
                           <SelectContent>
-                            {conditions.map((condition) => (
+                            {ebayConditions.map((condition) => (
                               <SelectItem key={condition.value} value={condition.value}>
-                                {condition.label}
+                                <div className="flex flex-col">
+                                  <span>{condition.label}</span>
+                                  <span className="text-xs text-muted-foreground">{condition.description}</span>
+                                </div>
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -329,7 +425,7 @@ export default function CreateListing() {
 
                       <div>
                         <Label>Category *</Label>
-                        <Select onValueChange={(value) => form.setValue("category", value)}>
+                        <Select onValueChange={(value: any) => form.setValue("category", value)}>
                           <SelectTrigger data-testid="select-category">
                             <SelectValue placeholder="Select category" />
                           </SelectTrigger>
@@ -346,6 +442,24 @@ export default function CreateListing() {
                         )}
                       </div>
                     </div>
+
+                    {/* Condition Description */}
+                    {selectedCondition && (
+                      <div>
+                        <Label htmlFor="conditionDescription">Condition Description (Optional)</Label>
+                        <Textarea
+                          id="conditionDescription"
+                          data-testid="textarea-condition-description"
+                          {...form.register("conditionDescription")}
+                          placeholder="Provide additional details about the item's condition..."
+                          rows={2}
+                          maxLength={1000}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {form.watch("conditionDescription")?.length || 0}/1000 characters
+                        </p>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
@@ -413,7 +527,9 @@ export default function CreateListing() {
                         onComplete={(result) => {
                           if (result.successful && result.successful.length > 0) {
                             const uploadURL = result.successful[0].uploadURL;
-                            handleImageUpload(uploadURL);
+                            if (uploadURL) {
+                              handleImageUpload(uploadURL);
+                            }
                           }
                         }}
                         buttonClassName="w-full h-32 border-2 border-dashed border-border hover:border-primary transition-colors"
@@ -447,6 +563,392 @@ export default function CreateListing() {
                         </div>
                       )}
                     </div>
+                  </CardContent>
+                </Card>
+
+                {/* Enhanced eBay Fields */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Enhanced eBay Features</CardTitle>
+                    <p className="text-sm text-muted-foreground">Additional eBay-specific fields for better listing optimization</p>
+                  </CardHeader>
+                  <CardContent>
+                    <TooltipProvider>
+                      <Accordion type="multiple" className="w-full">
+                        {/* Product Identification */}
+                        <AccordionItem value="identification">
+                          <AccordionTrigger className="text-left">
+                            <div className="flex items-center gap-2">
+                              <span>Product Identification Codes</span>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="max-w-xs">Product codes help eBay identify your item and improve search visibility. EPID is preferred if available.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="epid">eBay Product ID (EPID) - Preferred</Label>
+                                <Input
+                                  id="epid"
+                                  data-testid="input-epid"
+                                  {...form.register("epid")}
+                                  placeholder="Enter eBay Product ID"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">Most accurate for eBay matching</p>
+                              </div>
+                              <div>
+                                <Label htmlFor="upc">UPC (12 digits)</Label>
+                                <Input
+                                  id="upc"
+                                  data-testid="input-upc"
+                                  {...form.register("upc")}
+                                  placeholder="123456789012"
+                                  maxLength={12}
+                                />
+                                {form.formState.errors.upc && (
+                                  <p className="text-destructive text-sm mt-1">{form.formState.errors.upc.message}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="ean">EAN (13 digits)</Label>
+                                <Input
+                                  id="ean"
+                                  data-testid="input-ean"
+                                  {...form.register("ean")}
+                                  placeholder="1234567890123"
+                                  maxLength={13}
+                                />
+                                {form.formState.errors.ean && (
+                                  <p className="text-destructive text-sm mt-1">{form.formState.errors.ean.message}</p>
+                                )}
+                              </div>
+                              <div>
+                                <Label htmlFor="gtin">GTIN (14 digits)</Label>
+                                <Input
+                                  id="gtin"
+                                  data-testid="input-gtin"
+                                  {...form.register("gtin")}
+                                  placeholder="12345678901234"
+                                  maxLength={14}
+                                />
+                                {form.formState.errors.gtin && (
+                                  <p className="text-destructive text-sm mt-1">{form.formState.errors.gtin.message}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label htmlFor="isbn">ISBN (for books)</Label>
+                                <Input
+                                  id="isbn"
+                                  data-testid="input-isbn"
+                                  {...form.register("isbn")}
+                                  placeholder="9781234567890"
+                                />
+                                {form.formState.errors.isbn && (
+                                  <p className="text-destructive text-sm mt-1">{form.formState.errors.isbn.message}</p>
+                                )}
+                              </div>
+                              <div>
+                                <Label htmlFor="mpn">Manufacturer Part Number</Label>
+                                <Input
+                                  id="mpn"
+                                  data-testid="input-mpn"
+                                  {...form.register("mpn")}
+                                  placeholder="Enter MPN"
+                                  maxLength={65}
+                                />
+                              </div>
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+
+                        {/* Item Specifics */}
+                        <AccordionItem value="specifics">
+                          <AccordionTrigger className="text-left">
+                            <div className="flex items-center gap-2">
+                              <span>Item Specifics</span>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="max-w-xs">Add specific product attributes like "Style", "Fit", "Features" etc. that help buyers find your item.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="space-y-4">
+                            <div className="space-y-3">
+                              {itemSpecificFields.map((field, index) => (
+                                <div key={field.id} className="flex gap-2 items-start">
+                                  <div className="flex-1">
+                                    <Input
+                                      placeholder="Name (e.g., Style)"
+                                      {...form.register(`itemSpecifics.${index}.name`)}
+                                      data-testid={`input-specific-name-${index}`}
+                                    />
+                                  </div>
+                                  <div className="flex-1">
+                                    <Input
+                                      placeholder="Value (e.g., Casual)"
+                                      {...form.register(`itemSpecifics.${index}.value`)}
+                                      data-testid={`input-specific-value-${index}`}
+                                    />
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => removeItemSpecific(index)}
+                                    data-testid={`button-remove-specific-${index}`}
+                                  >
+                                    <Minus className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ))}
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => appendItemSpecific({ name: "", value: "" })}
+                                className="w-full"
+                                data-testid="button-add-specific"
+                              >
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add Item Specific
+                              </Button>
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+
+                        {/* Shipping & Package Information */}
+                        <AccordionItem value="shipping">
+                          <AccordionTrigger className="text-left">
+                            <div className="flex items-center gap-2">
+                              <span>Shipping & Package Information</span>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="max-w-xs">Package dimensions and weight help calculate accurate shipping costs.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="space-y-4">
+                            <div>
+                              <Label htmlFor="packageWeight">Package Weight</Label>
+                              <div className="flex gap-2">
+                                <Input
+                                  id="packageWeight"
+                                  data-testid="input-package-weight"
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  max="150"
+                                  {...form.register("packageWeight", { valueAsNumber: true })}
+                                  placeholder="0.0"
+                                  className="flex-1"
+                                />
+                                <Select value={packageUnit} onValueChange={(value: "inches" | "cm") => setPackageUnit(value)}>
+                                  <SelectTrigger className="w-20" data-testid="select-weight-unit">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="inches">lbs</SelectItem>
+                                    <SelectItem value="cm">kg</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {form.formState.errors.packageWeight && (
+                                <p className="text-destructive text-sm mt-1">{form.formState.errors.packageWeight.message}</p>
+                              )}
+                            </div>
+                            
+                            <div>
+                              <Label>Package Dimensions</Label>
+                              <div className="grid grid-cols-4 gap-2">
+                                <Input
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  placeholder="Length"
+                                  onChange={(e) => {
+                                    const dimensions = form.getValues("packageDimensions") || { length: 0, width: 0, height: 0, unit: packageUnit };
+                                    form.setValue("packageDimensions", {
+                                      ...dimensions,
+                                      length: parseFloat(e.target.value) || 0,
+                                      unit: packageUnit
+                                    });
+                                  }}
+                                  data-testid="input-package-length"
+                                />
+                                <Input
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  placeholder="Width"
+                                  onChange={(e) => {
+                                    const dimensions = form.getValues("packageDimensions") || { length: 0, width: 0, height: 0, unit: packageUnit };
+                                    form.setValue("packageDimensions", {
+                                      ...dimensions,
+                                      width: parseFloat(e.target.value) || 0,
+                                      unit: packageUnit
+                                    });
+                                  }}
+                                  data-testid="input-package-width"
+                                />
+                                <Input
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  placeholder="Height"
+                                  onChange={(e) => {
+                                    const dimensions = form.getValues("packageDimensions") || { length: 0, width: 0, height: 0, unit: packageUnit };
+                                    form.setValue("packageDimensions", {
+                                      ...dimensions,
+                                      height: parseFloat(e.target.value) || 0,
+                                      unit: packageUnit
+                                    });
+                                  }}
+                                  data-testid="input-package-height"
+                                />
+                                <Select value={packageUnit} onValueChange={(value: "inches" | "cm") => {
+                                  setPackageUnit(value);
+                                  const dimensions = form.getValues("packageDimensions") || { length: 0, width: 0, height: 0, unit: packageUnit };
+                                  form.setValue("packageDimensions", {
+                                    ...dimensions,
+                                    unit: value
+                                  });
+                                }}>
+                                  <SelectTrigger data-testid="select-dimension-unit">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="inches">in</SelectItem>
+                                    <SelectItem value="cm">cm</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+
+                        {/* Advanced Listing Options */}
+                        <AccordionItem value="advanced">
+                          <AccordionTrigger className="text-left">
+                            <div className="flex items-center gap-2">
+                              <span>Advanced Listing Options</span>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="max-w-xs">Choose between fixed price or auction format, and set duration and pricing options.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <Label>Listing Format</Label>
+                                <Select 
+                                  defaultValue="FIXED_PRICE"
+                                  onValueChange={(value: any) => form.setValue("listingFormat", value)}
+                                >
+                                  <SelectTrigger data-testid="select-listing-format">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="FIXED_PRICE">Fixed Price</SelectItem>
+                                    <SelectItem value="AUCTION">Auction</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label>Listing Duration</Label>
+                                <Select 
+                                  defaultValue="GTC"
+                                  onValueChange={(value: any) => form.setValue("listingDuration", value)}
+                                >
+                                  <SelectTrigger data-testid="select-listing-duration">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="GTC">Good Till Cancelled</SelectItem>
+                                    <SelectItem value="DAYS_1">1 Day</SelectItem>
+                                    <SelectItem value="DAYS_3">3 Days</SelectItem>
+                                    <SelectItem value="DAYS_5">5 Days</SelectItem>
+                                    <SelectItem value="DAYS_7">7 Days</SelectItem>
+                                    <SelectItem value="DAYS_10">10 Days</SelectItem>
+                                    <SelectItem value="DAYS_30">30 Days</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            
+                            {form.watch("listingFormat") === "AUCTION" && (
+                              <div className="space-y-4 p-4 border border-border rounded-lg bg-muted/50">
+                                <h4 className="font-medium">Auction Settings</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div>
+                                    <Label htmlFor="startPrice">Starting Price ($)</Label>
+                                    <Input
+                                      id="startPrice"
+                                      data-testid="input-start-price"
+                                      type="number"
+                                      step="0.01"
+                                      min="0.01"
+                                      {...form.register("startPrice", { valueAsNumber: true })}
+                                      placeholder="0.99"
+                                    />
+                                    {form.formState.errors.startPrice && (
+                                      <p className="text-destructive text-sm mt-1">{form.formState.errors.startPrice.message}</p>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <Label htmlFor="reservePrice">Reserve Price ($) - Optional</Label>
+                                    <Input
+                                      id="reservePrice"
+                                      data-testid="input-reserve-price"
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      {...form.register("reservePrice", { valueAsNumber: true })}
+                                      placeholder="0.00"
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">Minimum price you'll accept</p>
+                                  </div>
+                                </div>
+                                <div>
+                                  <Label htmlFor="buyItNowPrice">Buy It Now Price ($) - Optional</Label>
+                                  <Input
+                                    id="buyItNowPrice"
+                                    data-testid="input-buy-it-now-price"
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    {...form.register("buyItNowPrice", { valueAsNumber: true })}
+                                    placeholder="0.00"
+                                  />
+                                  <p className="text-xs text-muted-foreground mt-1">Allow buyers to purchase immediately</p>
+                                </div>
+                              </div>
+                            )}
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
+                    </TooltipProvider>
                   </CardContent>
                 </Card>
               </div>
