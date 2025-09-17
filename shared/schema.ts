@@ -61,13 +61,19 @@ export const users = pgTable("users", {
 export const marketplaceConnections = pgTable("marketplace_connections", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  marketplace: text("marketplace").notNull(), // ebay, poshmark, mercari, etc.
+  marketplace: text("marketplace").notNull(), // ebay, poshmark, mercari, shopify, etc.
   isConnected: boolean("is_connected").default(false),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   tokenExpiresAt: timestamp("token_expires_at"),
   lastSyncAt: timestamp("last_sync_at"),
   settings: jsonb("settings"), // marketplace-specific settings
+  
+  // Shopify-specific connection fields
+  shopUrl: text("shop_url"), // Shopify shop domain (e.g., myshop.myshopify.com)
+  shopifyApiVersion: text("shopify_api_version").default("2024-01"), // API version for compatibility
+  shopifyWebhookId: text("shopify_webhook_id"), // Webhook subscription ID for real-time updates
+  shopifyLocationId: text("shopify_location_id"), // Default fulfillment location
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -106,6 +112,26 @@ export const listings = pgTable("listings", {
   material: text("material"),
   itemSpecifics: jsonb("item_specifics"), // Dynamic name-value pairs for eBay
   
+  // Shopify-Specific Fields
+  shopifyProductId: text("shopify_product_id"), // Shopify product ID
+  shopifyVariantId: text("shopify_variant_id"), // Shopify variant ID  
+  shopifyHandle: text("shopify_handle"), // URL handle/slug
+  vendor: text("vendor"), // Product vendor/manufacturer
+  productType: text("product_type"), // Shopify product type
+  tags: text("tags").array(), // Product tags for organization and SEO
+  
+  // SEO Fields (Shopify & general)
+  metaTitle: text("meta_title"), // SEO title
+  metaDescription: text("meta_description"), // SEO description
+  metaKeywords: text("meta_keywords").array(), // SEO keywords
+  
+  // Product Options & Variants (Shopify)
+  options: jsonb("options"), // Product options like [{name: "Size", values: ["S", "M", "L"]}]
+  variants: jsonb("variants"), // Product variants with price, SKU, inventory, etc.
+  requiresShipping: boolean("requires_shipping").default(true),
+  weight: decimal("weight", { precision: 10, scale: 3 }), // Product weight
+  weightUnit: text("weight_unit").default("lb"), // lb, oz, kg, g
+  
   // Shipping & Package Information
   packageWeight: decimal("package_weight", { precision: 8, scale: 3 }), // Weight in pounds/kg
   packageDimensions: jsonb("package_dimensions"), // {length, width, height, unit}
@@ -143,6 +169,7 @@ export const listingPosts = pgTable("listing_posts", {
   listingId: uuid("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
   marketplace: text("marketplace").notNull(),
   externalId: text("external_id"), // ID from the marketplace
+  shopifyInventoryItemId: text("shopify_inventory_item_id"), // Shopify inventory tracking ID
   externalUrl: text("external_url"), // URL on the marketplace
   status: text("status").default("pending"), // pending, posted, failed, delisted
   errorMessage: text("error_message"),
