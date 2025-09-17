@@ -438,6 +438,317 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Shopify OAuth routes
+  app.post("/api/marketplaces/shopify/install", requireAuth, async (req, res) => {
+    try {
+      const { shopUrl } = req.body;
+      
+      if (!shopUrl) {
+        return res.status(400).json({ error: "Shop URL is required" });
+      }
+
+      const { shopifyApiService } = await import("./services/shopifyApiService");
+      
+      // Generate state parameter for security (store in session/db for verification)
+      const state = `${req.user!.id}_${Date.now()}`;
+      
+      // Store state temporarily for verification (in production, use session or database)
+      // For now, we'll include userId in state and verify on callback
+      
+      const installUrl = shopifyApiService.getInstallUrl(shopUrl, state);
+      
+      res.json({ 
+        installUrl,
+        message: "Redirect user to this URL to install the app" 
+      });
+    } catch (error: any) {
+      console.error("Shopify install error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/marketplaces/shopify/callback", async (req, res) => {
+    try {
+      const { code, shop, state, hmac, timestamp } = req.query as Record<string, string>;
+      
+      if (!code || !shop || !hmac) {
+        return res.status(400).json({ error: "Missing required parameters" });
+      }
+
+      const { shopifyApiService } = await import("./services/shopifyApiService");
+      
+      // Verify HMAC to ensure request is from Shopify
+      const queryParams = { ...req.query } as Record<string, string>;
+      delete queryParams.hmac;
+      
+      if (!shopifyApiService.verifyHmac({ ...queryParams, hmac })) {
+        return res.status(401).json({ error: "Invalid HMAC signature" });
+      }
+
+      // Extract userId from state (in production, verify against stored state)
+      const userId = state?.split("_")[0];
+      if (!userId) {
+        return res.status(400).json({ error: "Invalid state parameter" });
+      }
+
+      // Exchange code for access token
+      const tokenData = await shopifyApiService.exchangeCodeForToken(shop, code);
+      
+      // Store the connection
+      const connection = await storage.upsertMarketplaceConnection({
+        userId,
+        marketplace: "shopify",
+        isConnected: true,
+        accessToken: tokenData.access_token,
+        shopUrl: shop,
+        settings: {
+          scope: tokenData.scope,
+          associatedUser: tokenData.associated_user,
+        },
+      });
+
+      // Get shop info and default location
+      const shopInfo = await shopifyApiService.getShopInfo(connection);
+      const locations = await shopifyApiService.getLocations(connection);
+      
+      // Update connection with additional info
+      await storage.updateMarketplaceConnection(connection.id, {
+        shopifyLocationId: locations[0]?.id?.toString(),
+        settings: {
+          ...connection.settings,
+          shopInfo,
+          locations,
+        },
+      });
+
+      // Register webhooks for real-time updates
+      const baseUrl = process.env.VITE_BASE_URL || `http://localhost:5000`;
+      const webhookTopics = [
+        "products/create",
+        "products/update",
+        "products/delete",
+        "inventory_levels/update",
+      ];
+
+      for (const topic of webhookTopics) {
+        try {
+          const webhook = await shopifyApiService.registerWebhook(
+            connection,
+            topic,
+            `${baseUrl}/api/marketplaces/shopify/webhook`
+          );
+          console.log(`Registered Shopify webhook for ${topic}`);
+        } catch (error) {
+          console.warn(`Failed to register webhook for ${topic}:`, error);
+        }
+      }
+
+      // Redirect to success page
+      res.redirect("/marketplaces?connected=shopify");
+    } catch (error: any) {
+      console.error("Shopify callback error:", error);
+      res.redirect(`/marketplaces?error=${encodeURIComponent(error.message)}`);
+    }
+  });
+
+  app.post("/api/marketplaces/shopify/webhook", async (req, res) => {
+    try {
+      const { shopifyApiService } = await import("./services/shopifyApiService");
+      
+      // Verify webhook signature
+      const signature = req.headers["x-shopify-hmac-sha256"] as string;
+      const rawBody = JSON.stringify(req.body);
+      
+      if (!shopifyApiService.verifyWebhookSignature(rawBody, signature)) {
+        return res.status(401).json({ error: "Invalid webhook signature" });
+      }
+
+      const topic = req.headers["x-shopify-topic"] as string;
+      const shopDomain = req.headers["x-shopify-shop-domain"] as string;
+      
+      console.log(`Received Shopify webhook: ${topic} from ${shopDomain}`);
+      
+      // Handle different webhook topics
+      switch (topic) {
+        case "products/create":
+        case "products/update":
+          // Sync product changes to local listings
+          // Implementation would sync changes back to our database
+          break;
+        case "products/delete":
+          // Remove product from local listings
+          break;
+        case "inventory_levels/update":
+          // Update local inventory levels
+          break;
+      }
+
+      res.status(200).send("OK");
+    } catch (error: any) {
+      console.error("Shopify webhook error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/marketplaces/shopify/products", requireAuth, async (req, res) => {
+    try {
+      const { limit = "50", status = "active" } = req.query;
+      
+      const connection = await storage.getMarketplaceConnection(req.user!.id, "shopify");
+      if (!connection || !connection.isConnected) {
+        return res.status(404).json({ error: "Shopify connection not found" });
+      }
+
+      const { shopifyApiService } = await import("./services/shopifyApiService");
+      const products = await shopifyApiService.getProducts(connection, {
+        limit: parseInt(limit as string),
+        status: status as "active" | "archived" | "draft",
+      });
+
+      res.json(products);
+    } catch (error: any) {
+      console.error("Error fetching Shopify products:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/marketplaces/shopify/products", requireAuth, async (req, res) => {
+    try {
+      const connection = await storage.getMarketplaceConnection(req.user!.id, "shopify");
+      if (!connection || !connection.isConnected) {
+        return res.status(404).json({ error: "Shopify connection not found" });
+      }
+
+      const { shopifyApiService } = await import("./services/shopifyApiService");
+      const listing = req.body;
+      
+      const product = await shopifyApiService.createProduct(connection, listing);
+      
+      res.json({
+        success: true,
+        product,
+        message: "Product created successfully in Shopify",
+      });
+    } catch (error: any) {
+      console.error("Error creating Shopify product:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/marketplaces/shopify/import", requireAuth, async (req, res) => {
+    try {
+      const { limit = 50, status = "active" } = req.body;
+      
+      const connection = await storage.getMarketplaceConnection(req.user!.id, "shopify");
+      if (!connection || !connection.isConnected) {
+        return res.status(404).json({ error: "Shopify connection not found" });
+      }
+
+      const { shopifyApiService } = await import("./services/shopifyApiService");
+      const listings = await shopifyApiService.importProducts(req.user!.id, connection, {
+        limit,
+        status,
+      });
+
+      // Save imported listings to database
+      const savedListings = [];
+      for (const listing of listings) {
+        const saved = await storage.createListing(listing);
+        savedListings.push(saved);
+      }
+
+      res.json({
+        success: true,
+        imported: savedListings.length,
+        listings: savedListings,
+        message: `Successfully imported ${savedListings.length} products from Shopify`,
+      });
+    } catch (error: any) {
+      console.error("Error importing Shopify products:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.put("/api/marketplaces/shopify/products/:productId", requireAuth, async (req, res) => {
+    try {
+      const { productId } = req.params;
+      
+      const connection = await storage.getMarketplaceConnection(req.user!.id, "shopify");
+      if (!connection || !connection.isConnected) {
+        return res.status(404).json({ error: "Shopify connection not found" });
+      }
+
+      const { shopifyApiService } = await import("./services/shopifyApiService");
+      const updates = req.body;
+      
+      const product = await shopifyApiService.updateProduct(connection, productId, updates);
+      
+      res.json({
+        success: true,
+        product,
+        message: "Product updated successfully in Shopify",
+      });
+    } catch (error: any) {
+      console.error("Error updating Shopify product:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/marketplaces/shopify/products/:productId", requireAuth, async (req, res) => {
+    try {
+      const { productId } = req.params;
+      
+      const connection = await storage.getMarketplaceConnection(req.user!.id, "shopify");
+      if (!connection || !connection.isConnected) {
+        return res.status(404).json({ error: "Shopify connection not found" });
+      }
+
+      const { shopifyApiService } = await import("./services/shopifyApiService");
+      await shopifyApiService.deleteProduct(connection, productId);
+      
+      res.json({
+        success: true,
+        message: "Product deleted successfully from Shopify",
+      });
+    } catch (error: any) {
+      console.error("Error deleting Shopify product:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/marketplaces/shopify/inventory", requireAuth, async (req, res) => {
+    try {
+      const { inventoryItemId, locationId, quantity } = req.body;
+      
+      if (!inventoryItemId || !locationId || quantity === undefined) {
+        return res.status(400).json({ 
+          error: "inventoryItemId, locationId, and quantity are required" 
+        });
+      }
+
+      const connection = await storage.getMarketplaceConnection(req.user!.id, "shopify");
+      if (!connection || !connection.isConnected) {
+        return res.status(404).json({ error: "Shopify connection not found" });
+      }
+
+      const { shopifyApiService } = await import("./services/shopifyApiService");
+      await shopifyApiService.updateInventory(
+        connection,
+        inventoryItemId,
+        locationId || connection.shopifyLocationId,
+        quantity
+      );
+      
+      res.json({
+        success: true,
+        message: "Inventory updated successfully",
+      });
+    } catch (error: any) {
+      console.error("Error updating Shopify inventory:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // eBay Constants endpoint for frontend
   app.get("/api/ebay/constants", async (req, res) => {
     try {
