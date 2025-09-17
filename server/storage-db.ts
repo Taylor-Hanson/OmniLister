@@ -38,7 +38,12 @@ import {
   webhookEvents, type WebhookEvent, type InsertWebhookEvent,
   webhookDeliveries, type WebhookDelivery, type InsertWebhookDelivery,
   pollingSchedules, type PollingSchedule, type InsertPollingSchedule,
-  webhookHealthMetrics, type WebhookHealthMetrics, type InsertWebhookHealthMetrics
+  webhookHealthMetrics, type WebhookHealthMetrics, type InsertWebhookHealthMetrics,
+  automationRules, type AutomationRule, type InsertAutomationRule,
+  automationSchedules, type AutomationSchedule, type InsertAutomationSchedule,
+  automationLogs, type AutomationLog, type InsertAutomationLog,
+  poshmarkShareSettings, type PoshmarkShareSettings, type InsertPoshmarkShareSettings,
+  offerTemplates, type OfferTemplate, type InsertOfferTemplate
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, desc, gte, lte, isNull, isNotNull, sql } from "drizzle-orm";
@@ -2180,5 +2185,364 @@ export class DatabaseStorage implements IStorage {
       healthScore,
       uptime
     };
+  }
+
+  // Automation Rule methods
+  async getUserAutomationRules(userId: string): Promise<AutomationRule[]> {
+    return await db
+      .select()
+      .from(automationRules)
+      .where(eq(automationRules.userId, userId))
+      .orderBy(desc(automationRules.createdAt));
+  }
+
+  async getAutomationRules(userId: string, marketplace?: string): Promise<AutomationRule[]> {
+    let conditions = [eq(automationRules.userId, userId)];
+    
+    if (marketplace) {
+      conditions.push(eq(automationRules.marketplace, marketplace));
+    }
+    
+    return await db
+      .select()
+      .from(automationRules)
+      .where(and(...conditions))
+      .orderBy(desc(automationRules.createdAt));
+  }
+
+  async getAutomationRule(id: string): Promise<AutomationRule | undefined> {
+    const [rule] = await db.select().from(automationRules).where(eq(automationRules.id, id));
+    return rule || undefined;
+  }
+
+  async createAutomationRule(userId: string, rule: InsertAutomationRule): Promise<AutomationRule> {
+    const [newRule] = await db
+      .insert(automationRules)
+      .values({
+        ...rule,
+        id: randomUUID(),
+        userId,
+        totalExecutions: 0,
+        successfulExecutions: 0,
+        failedExecutions: 0,
+        conversionRate: 0,
+        averageExecutionTime: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newRule;
+  }
+
+  async updateAutomationRule(id: string, updates: Partial<AutomationRule>): Promise<AutomationRule> {
+    const [rule] = await db
+      .update(automationRules)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(automationRules.id, id))
+      .returning();
+    if (!rule) throw new Error("Automation rule not found");
+    return rule;
+  }
+
+  async deleteAutomationRule(id: string): Promise<void> {
+    await db.delete(automationRules).where(eq(automationRules.id, id));
+  }
+
+  // Automation Schedule methods
+  async getAutomationSchedules(ruleId?: string): Promise<AutomationSchedule[]> {
+    if (ruleId) {
+      return await db
+        .select()
+        .from(automationSchedules)
+        .where(eq(automationSchedules.ruleId, ruleId))
+        .orderBy(desc(automationSchedules.createdAt));
+    }
+    return await db
+      .select()
+      .from(automationSchedules)
+      .orderBy(desc(automationSchedules.createdAt));
+  }
+
+  async getAutomationSchedule(id: string): Promise<AutomationSchedule | undefined> {
+    const [schedule] = await db.select().from(automationSchedules).where(eq(automationSchedules.id, id));
+    return schedule || undefined;
+  }
+
+  async getActiveAutomationSchedules(): Promise<AutomationSchedule[]> {
+    // Join with rules to get full rule information
+    const results = await db
+      .select({
+        schedule: automationSchedules,
+        rule: automationRules
+      })
+      .from(automationSchedules)
+      .innerJoin(automationRules, eq(automationSchedules.ruleId, automationRules.id))
+      .where(and(
+        eq(automationSchedules.isActive, true),
+        eq(automationRules.isEnabled, true)
+      ))
+      .orderBy(automationSchedules.nextScheduledAt);
+
+    // Return schedules with rule attached
+    return results.map(r => ({ ...r.schedule, rule: r.rule })) as any;
+  }
+
+  async createAutomationSchedule(schedule: InsertAutomationSchedule): Promise<AutomationSchedule> {
+    const [newSchedule] = await db
+      .insert(automationSchedules)
+      .values({
+        ...schedule,
+        id: randomUUID(),
+        executionCount: 0,
+        consecutiveFailures: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newSchedule;
+  }
+
+  async updateAutomationSchedule(id: string, updates: Partial<AutomationSchedule>): Promise<AutomationSchedule> {
+    const [schedule] = await db
+      .update(automationSchedules)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(automationSchedules.id, id))
+      .returning();
+    if (!schedule) throw new Error("Automation schedule not found");
+    return schedule;
+  }
+
+  async deleteAutomationSchedule(id: string): Promise<void> {
+    await db.delete(automationSchedules).where(eq(automationSchedules.id, id));
+  }
+
+  async deactivateAllAutomationSchedules(): Promise<void> {
+    await db
+      .update(automationSchedules)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(automationSchedules.isActive, true));
+  }
+
+  async reactivateAllAutomationSchedules(): Promise<void> {
+    // Reactivate schedules for enabled rules
+    const enabledRuleIds = await db
+      .select({ id: automationRules.id })
+      .from(automationRules)
+      .where(eq(automationRules.isEnabled, true));
+
+    if (enabledRuleIds.length > 0) {
+      await db
+        .update(automationSchedules)
+        .set({ isActive: true, updatedAt: new Date() })
+        .where(sql`${automationSchedules.ruleId} IN (${sql.join(enabledRuleIds.map(r => sql`${r.id}`), sql`, `)})`);
+    }
+  }
+
+  // Automation Log methods
+  async getAutomationLogs(userId: string, filters?: {
+    ruleId?: string;
+    marketplace?: string;
+    status?: string;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+  }): Promise<AutomationLog[]> {
+    let conditions = [eq(automationLogs.userId, userId)];
+    
+    if (filters?.ruleId) {
+      conditions.push(eq(automationLogs.ruleId, filters.ruleId));
+    }
+    if (filters?.marketplace) {
+      conditions.push(eq(automationLogs.marketplace, filters.marketplace));
+    }
+    if (filters?.status) {
+      conditions.push(eq(automationLogs.status, filters.status));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(automationLogs.executedAt, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(automationLogs.executedAt, filters.endDate));
+    }
+    
+    let query = db.select().from(automationLogs).where(and(...conditions)).orderBy(desc(automationLogs.executedAt));
+    
+    if (filters?.limit) {
+      query = query.limit(filters.limit);
+    }
+    
+    return await query;
+  }
+
+  async getAutomationLog(id: string): Promise<AutomationLog | undefined> {
+    const [log] = await db.select().from(automationLogs).where(eq(automationLogs.id, id));
+    return log || undefined;
+  }
+
+  async createAutomationLog(log: InsertAutomationLog): Promise<AutomationLog> {
+    const [newLog] = await db
+      .insert(automationLogs)
+      .values({
+        ...log,
+        id: randomUUID(),
+        executedAt: new Date(),
+      })
+      .returning();
+    return newLog;
+  }
+
+  async getAutomationLogStats(userId: string, days?: number): Promise<{
+    totalActions: number;
+    successRate: number;
+    mostActiveMarketplace: string;
+    mostActiveRuleType: string;
+  }> {
+    const startDate = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : undefined;
+    let conditions = [eq(automationLogs.userId, userId)];
+    
+    if (startDate) {
+      conditions.push(gte(automationLogs.executedAt, startDate));
+    }
+    
+    const logs = await db.select().from(automationLogs).where(and(...conditions));
+    
+    const totalActions = logs.length;
+    const successfulActions = logs.filter(l => l.status === 'success').length;
+    const successRate = totalActions > 0 ? (successfulActions / totalActions) * 100 : 0;
+    
+    // Find most active marketplace
+    const marketplaceCounts = logs.reduce((acc, log) => {
+      acc[log.marketplace] = (acc[log.marketplace] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const mostActiveMarketplace = Object.entries(marketplaceCounts)
+      .sort(([, a], [, b]) => b - a)[0]?.[0] || 'none';
+    
+    // Find most active rule type
+    const ruleTypeCounts = logs.reduce((acc, log) => {
+      acc[log.actionType] = (acc[log.actionType] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const mostActiveRuleType = Object.entries(ruleTypeCounts)
+      .sort(([, a], [, b]) => b - a)[0]?.[0] || 'none';
+    
+    return {
+      totalActions,
+      successRate,
+      mostActiveMarketplace,
+      mostActiveRuleType,
+    };
+  }
+
+  // Poshmark Share Settings methods
+  async getPoshmarkShareSettings(userId: string): Promise<PoshmarkShareSettings | undefined> {
+    const [settings] = await db
+      .select()
+      .from(poshmarkShareSettings)
+      .where(eq(poshmarkShareSettings.userId, userId));
+    return settings || undefined;
+  }
+
+  async createPoshmarkShareSettings(userId: string, settings: InsertPoshmarkShareSettings): Promise<PoshmarkShareSettings> {
+    const [newSettings] = await db
+      .insert(poshmarkShareSettings)
+      .values({
+        ...settings,
+        id: randomUUID(),
+        userId,
+        totalSharesThisMonth: 0,
+        totalFollowsThisMonth: 0,
+        totalOffersThisMonth: 0,
+        averageSharesPerDay: 0,
+        peakShareHour: 0,
+        bestPerformingDay: 'monday',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newSettings;
+  }
+
+  async updatePoshmarkShareSettings(id: string, updates: Partial<PoshmarkShareSettings>): Promise<PoshmarkShareSettings> {
+    const [settings] = await db
+      .update(poshmarkShareSettings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(poshmarkShareSettings.id, id))
+      .returning();
+    if (!settings) throw new Error("Poshmark share settings not found");
+    return settings;
+  }
+
+  async deletePoshmarkShareSettings(userId: string): Promise<void> {
+    await db.delete(poshmarkShareSettings).where(eq(poshmarkShareSettings.userId, userId));
+  }
+
+  // Offer Template methods
+  async getOfferTemplates(userId: string, marketplace?: string): Promise<OfferTemplate[]> {
+    let conditions = [eq(offerTemplates.userId, userId)];
+    
+    if (marketplace) {
+      conditions.push(eq(offerTemplates.marketplace, marketplace));
+    }
+    
+    return await db
+      .select()
+      .from(offerTemplates)
+      .where(and(...conditions))
+      .orderBy(desc(offerTemplates.createdAt));
+  }
+
+  async getOfferTemplate(id: string): Promise<OfferTemplate | undefined> {
+    const [template] = await db.select().from(offerTemplates).where(eq(offerTemplates.id, id));
+    return template || undefined;
+  }
+
+  async getDefaultOfferTemplate(userId: string, marketplace: string, templateType: string): Promise<OfferTemplate | undefined> {
+    const [template] = await db
+      .select()
+      .from(offerTemplates)
+      .where(and(
+        eq(offerTemplates.userId, userId),
+        eq(offerTemplates.marketplace, marketplace),
+        eq(offerTemplates.templateType, templateType),
+        eq(offerTemplates.isDefault, true)
+      ));
+    return template || undefined;
+  }
+
+  async createOfferTemplate(userId: string, template: InsertOfferTemplate): Promise<OfferTemplate> {
+    const [newTemplate] = await db
+      .insert(offerTemplates)
+      .values({
+        ...template,
+        id: randomUUID(),
+        userId,
+        totalOffersSent: 0,
+        offersAccepted: 0,
+        offersDeclined: 0,
+        offersCountered: 0,
+        conversionRate: 0,
+        averageDiscountAccepted: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    return newTemplate;
+  }
+
+  async updateOfferTemplate(id: string, updates: Partial<OfferTemplate>): Promise<OfferTemplate> {
+    const [template] = await db
+      .update(offerTemplates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(offerTemplates.id, id))
+      .returning();
+    if (!template) throw new Error("Offer template not found");
+    return template;
+  }
+
+  async deleteOfferTemplate(id: string): Promise<void> {
+    await db.delete(offerTemplates).where(eq(offerTemplates.id, id));
   }
 }
