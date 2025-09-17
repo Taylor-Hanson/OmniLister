@@ -39,6 +39,30 @@ const navigationItems = [
     testId: "nav-bulk-manager"
   },
   {
+    href: "/automation",
+    icon: "fas fa-bolt",
+    label: "Automation",
+    testId: "nav-automation"
+  },
+  {
+    href: "/automation-settings",
+    icon: "fas fa-sliders-h",
+    label: "Auto Settings",
+    testId: "nav-automation-settings"
+  },
+  {
+    href: "/automation-schedules",
+    icon: "fas fa-calendar-check",
+    label: "Schedules",
+    testId: "nav-automation-schedules"
+  },
+  {
+    href: "/automation-logs",
+    icon: "fas fa-file-alt",
+    label: "Activity Logs",
+    testId: "nav-automation-logs"
+  },
+  {
     href: "/analytics",
     icon: "fas fa-chart-bar",
     label: "Analytics",
