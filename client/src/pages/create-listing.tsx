@@ -20,9 +20,11 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Plus, Minus, HelpCircle } from "lucide-react";
+import { Plus, Minus, HelpCircle, Tag, Store, Search } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { SiShopify } from "react-icons/si";
 
 // Use the comprehensive shared schema with conditional auction validation
 const listingFormSchema = insertListingSchema.refine(
@@ -951,6 +953,246 @@ export default function CreateListing() {
                     </TooltipProvider>
                   </CardContent>
                 </Card>
+
+                {/* Shopify-specific Fields */}
+                {selectedMarketplaces.includes("shopify") && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center gap-2">
+                        <SiShopify className="w-5 h-5 text-green-600" />
+                        <CardTitle>Shopify Fields</CardTitle>
+                      </div>
+                      <p className="text-sm text-muted-foreground">Additional fields for Shopify listings</p>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {/* Vendor */}
+                        <div>
+                          <Label htmlFor="vendor">Vendor</Label>
+                          <Input
+                            id="vendor"
+                            data-testid="input-vendor"
+                            {...form.register("vendor")}
+                            placeholder="Enter vendor/manufacturer name"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">The company that made the product</p>
+                        </div>
+
+                        {/* Product Type */}
+                        <div>
+                          <Label htmlFor="productType">Product Type</Label>
+                          <Input
+                            id="productType"
+                            data-testid="input-product-type"
+                            {...form.register("productType")}
+                            placeholder="e.g., Shirts, Electronics, Books"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">Used for categorizing in Shopify admin</p>
+                        </div>
+
+                        {/* Tags */}
+                        <div>
+                          <Label htmlFor="tags">Tags</Label>
+                          <Textarea
+                            id="tags"
+                            data-testid="input-tags"
+                            {...form.register("tags")}
+                            placeholder="Enter tags separated by commas (e.g., summer, casual, cotton)"
+                            rows={2}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">Helps with search and organization</p>
+                        </div>
+
+                        {/* SEO Section */}
+                        <Separator />
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2">
+                            <Search className="w-4 h-4 text-muted-foreground" />
+                            <h4 className="font-medium">SEO Settings</h4>
+                          </div>
+
+                          <div>
+                            <Label htmlFor="metaTitle">SEO Title</Label>
+                            <Input
+                              id="metaTitle"
+                              data-testid="input-meta-title"
+                              {...form.register("metaTitle")}
+                              placeholder="Page title for search engines (70 chars max)"
+                              maxLength={70}
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {form.watch("metaTitle")?.length || 0}/70 characters
+                            </p>
+                          </div>
+
+                          <div>
+                            <Label htmlFor="metaDescription">SEO Description</Label>
+                            <Textarea
+                              id="metaDescription"
+                              data-testid="input-meta-description"
+                              {...form.register("metaDescription")}
+                              placeholder="Description for search engines (160 chars max)"
+                              rows={3}
+                              maxLength={160}
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {form.watch("metaDescription")?.length || 0}/160 characters
+                            </p>
+                          </div>
+
+                          <div>
+                            <Label htmlFor="handle">URL Handle</Label>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground">yourstore.com/products/</span>
+                              <Input
+                                id="handle"
+                                data-testid="input-handle"
+                                {...form.register("handle")}
+                                placeholder="product-url-handle"
+                                className="flex-1"
+                              />
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">SEO-friendly URL for the product</p>
+                          </div>
+                        </div>
+
+                        {/* Variant Options */}
+                        <Separator />
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2">
+                            <Tag className="w-4 h-4 text-muted-foreground" />
+                            <h4 className="font-medium">Product Options</h4>
+                          </div>
+
+                          <Alert>
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>
+                              Define product options like Size, Color, Material. Variants will be created based on combinations of these options.
+                            </AlertDescription>
+                          </Alert>
+
+                          {/* Option 1 */}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="option1Name">Option 1 Name</Label>
+                              <Input
+                                id="option1Name"
+                                data-testid="input-option1-name"
+                                {...form.register("option1Name")}
+                                placeholder="e.g., Size"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="option1Values">Option 1 Values</Label>
+                              <Input
+                                id="option1Values"
+                                data-testid="input-option1-values"
+                                {...form.register("option1Values")}
+                                placeholder="e.g., S, M, L, XL"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Option 2 */}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="option2Name">Option 2 Name (Optional)</Label>
+                              <Input
+                                id="option2Name"
+                                data-testid="input-option2-name"
+                                {...form.register("option2Name")}
+                                placeholder="e.g., Color"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="option2Values">Option 2 Values</Label>
+                              <Input
+                                id="option2Values"
+                                data-testid="input-option2-values"
+                                {...form.register("option2Values")}
+                                placeholder="e.g., Red, Blue, Green"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Option 3 */}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="option3Name">Option 3 Name (Optional)</Label>
+                              <Input
+                                id="option3Name"
+                                data-testid="input-option3-name"
+                                {...form.register("option3Name")}
+                                placeholder="e.g., Material"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="option3Values">Option 3 Values</Label>
+                              <Input
+                                id="option3Values"
+                                data-testid="input-option3-values"
+                                {...form.register("option3Values")}
+                                placeholder="e.g., Cotton, Polyester"
+                              />
+                            </div>
+                          </div>
+
+                          <p className="text-xs text-muted-foreground">
+                            Separate multiple values with commas. Variants will be auto-generated from these options.
+                          </p>
+                        </div>
+
+                        {/* Inventory Tracking */}
+                        <Separator />
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2">
+                            <Store className="w-4 h-4 text-muted-foreground" />
+                            <h4 className="font-medium">Inventory Settings</h4>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="trackInventory"
+                              data-testid="checkbox-track-inventory"
+                              {...form.register("trackInventory")}
+                            />
+                            <Label htmlFor="trackInventory" className="text-sm font-normal">
+                              Track inventory for this product
+                            </Label>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id="continueSellingOutOfStock"
+                              data-testid="checkbox-continue-selling"
+                              {...form.register("continueSellingOutOfStock")}
+                            />
+                            <Label htmlFor="continueSellingOutOfStock" className="text-sm font-normal">
+                              Continue selling when out of stock
+                            </Label>
+                          </div>
+
+                          <div>
+                            <Label htmlFor="fulfillmentService">Fulfillment Service</Label>
+                            <Select 
+                              defaultValue="manual"
+                              onValueChange={(value: any) => form.setValue("fulfillmentService", value)}
+                            >
+                              <SelectTrigger data-testid="select-fulfillment-service">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="manual">Manual (you fulfill orders)</SelectItem>
+                                <SelectItem value="shopify">Shopify Fulfillment Network</SelectItem>
+                                <SelectItem value="third_party">Third-party fulfillment</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
 
               {/* Sidebar */}
