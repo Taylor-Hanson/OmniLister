@@ -6,6 +6,8 @@ Crosslist Pro is a production-ready MVP that enables sellers to compose product 
 
 The application is designed as a comprehensive crosslisting solution that addresses the core pain points of multi-platform sellers: time-consuming manual listing creation, inventory management across platforms, the complexity of optimizing listings for different marketplace requirements, and the need for deep business insights to maximize profitability.
 
+**New Automation Suite**: The platform now includes a powerful automation engine that eliminates daily manual tasks across Poshmark, Mercari, Depop, and Grailed marketplaces. Features include auto-share closet, auto-follow/unfollow users, auto-send offers to likers, bundle offers, scheduled sharing cycles, and marketplace-specific automations. The system incorporates safety compliance with rate limiting, circuit breakers, and human-like behavior patterns to avoid detection.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -36,6 +38,12 @@ Preferred communication style: Simple, everyday language.
 - **Jobs**: Background job tracking with progress updates and retry logic
 - **Audit Logs**: Activity tracking for user actions and system events
 - **Analytics Tables**: Comprehensive tracking including sales metrics, inventory analytics, marketplace performance, predictive forecasts, and competition analysis
+- **Automation Tables**: 
+  - automationRules: Store automation configurations per marketplace
+  - automationSchedules: Manage cron and interval schedules
+  - automationLogs: Track execution history and performance
+  - poshmarkShareSettings: Poshmark-specific settings (share order, parties, peak hours)
+  - offerTemplates: Customizable offer message templates with discount tiers
 
 ### AI Integration Architecture
 - **Product Analysis**: GPT-5 integration for analyzing product images and generating optimized listings
@@ -64,6 +72,50 @@ Preferred communication style: Simple, everyday language.
 - **Cross-platform Comparison**: Performance scoring and optimization across marketplaces
 - **Inventory Analytics**: Aging reports, turnover rates, and dead stock identification
 - **Export Capabilities**: CSV and JSON export for all analytics data
+
+### Automation System Architecture
+- **Central Orchestrator**: AutomationService manages all marketplace engines and coordinates automation tasks
+- **Marketplace Engines**: Dedicated engines for Poshmark, Mercari, Depop, and Grailed with platform-specific automation logic
+- **Safety Mechanisms**: Comprehensive safety service with rate limiting, circuit breakers, daily/hourly limits, and blackout periods
+- **Human-like Behavior**: Randomized delays (2-10 seconds), action variations, and natural patterns to avoid detection
+- **Scheduler Service**: Cron-based and interval scheduling with automatic activation/deactivation
+- **Queue Integration**: Background job processing via BullMQ with automatic retries and error handling
+- **Real-time Monitoring**: WebSocket updates for automation status and comprehensive logging system
+
+## Key Features
+
+### Automation Features by Marketplace
+
+#### Poshmark Automation
+- **Auto-Share Closet**: Share individual items or entire closet with configurable intervals
+- **Party Sharing**: Automatically share to Poshmark parties during peak hours
+- **Follow/Unfollow**: Build followers with smart targeting and daily limits
+- **Offers to Likers**: Send personalized offers with discount tiers
+- **Bundle Offers**: Create bundle deals for multiple items
+- **Sharing Cycles**: Continuous or scheduled sharing patterns
+
+#### Mercari Automation
+- **Auto-Offers**: Send competitive offers based on market pricing
+- **Auto-Relist**: Automatically relist stale items with optimized pricing
+- **Smart Promote**: Boost visibility during peak shopping hours
+
+#### Depop Automation
+- **Auto-Bump**: Keep listings fresh with regular bumps
+- **Auto-Refresh**: Update listings to maintain visibility
+- **Price Drops**: Strategic pricing to attract buyers
+
+#### Grailed Automation
+- **Auto-Bump**: Maintain listing position in search results
+- **Price Optimization**: Dynamic pricing based on market trends
+- **Cross-platform Sync**: Coordinate pricing across platforms
+
+### Safety & Compliance Features
+- **Rate Limiting**: Per-marketplace API limits with automatic throttling
+- **Circuit Breakers**: Automatic pause on repeated failures
+- **Human-like Patterns**: Randomized delays and action variations
+- **Blackout Periods**: Configurable quiet hours to avoid suspicion
+- **Emergency Stop**: One-click shutdown of all automations
+- **Compliance Monitoring**: Real-time tracking of limit compliance
 
 ## External Dependencies
 
