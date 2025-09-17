@@ -142,7 +142,7 @@ export class RecommendationService {
       patternAnalysisService.analyzeUserPatterns(userId),
       this.buildUserProfile(userId),
       this.analyzeRecentPerformance(userId),
-      storage.getJobs(userId, { status: 'pending', limit: 50 })
+      storage.getJobs(userId, { status: 'pending' })
     ]);
 
     // Emit data analysis complete
@@ -270,8 +270,7 @@ export class RecommendationService {
 
       // Check if user is posting at optimal times
       const upcomingJobs = await storage.getJobs(userId, { 
-        status: 'pending',
-        marketplace
+        status: 'pending'
       });
 
       let suboptimalJobs = 0;
@@ -720,10 +719,10 @@ export class RecommendationService {
     });
 
     // Add image optimization recommendations if we have view/engagement data
-    const listings = await storage.getListings(userId, { status: 'active', limit: 100 });
+    const listings = await storage.getListings(userId, { status: 'active' });
     const lowEngagementListings = listings.filter(listing => {
       // This would need actual engagement data - for now using a heuristic
-      const daysSinceListed = differenceInDays(new Date(), new Date(listing.createdAt));
+      const daysSinceListed = listing.createdAt ? differenceInDays(new Date(), new Date(listing.createdAt)) : 0;
       const hasImages = listing.images && Array.isArray(listing.images) && (listing.images as any[]).length > 0;
       return daysSinceListed > 7 && !hasImages;
     });
@@ -830,7 +829,7 @@ export class RecommendationService {
 
     // Seasonal strategy recommendations
     const currentMonth = new Date().getMonth();
-    const seasonalRecommendation = this.getSeasonalRecommendation(currentMonth, userProfile);
+    const seasonalRecommendation = this.getSeasonalRecommendation(currentMonth);
     
     if (seasonalRecommendation) {
       recommendations.push({
@@ -891,7 +890,7 @@ export class RecommendationService {
       totalListings: listings.length,
       activeListings: listings.filter(l => l.status === 'active').length,
       connectedMarketplaces: connections.filter(c => c.isConnected).length,
-      categories: [...new Set(listings.map(l => l.category).filter(Boolean))],
+      categories: Array.from(new Set(listings.map(l => l.category).filter(Boolean))),
       avgPrice: listings.length > 0 
         ? listings.reduce((sum, l) => sum + parseFloat(l.price), 0) / listings.length 
         : 0
@@ -1227,7 +1226,7 @@ export class RecommendationService {
     } catch (error) {
       return {
         success: false,
-        message: `Failed to apply recommendation: ${error.message}`
+        message: `Failed to apply recommendation: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
   }

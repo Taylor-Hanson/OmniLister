@@ -161,7 +161,7 @@ export class OptimizationEngine {
         storage.getPostingSuccessAnalytics(userId),
         storage.getListings(userId),
         storage.getMarketplaceMetrics(userId),
-        storage.getJobs(userId, { status: 'completed', limit: 100 }),
+        storage.getJobs(userId, { status: 'completed' }),
         storage.getMarketplaceConnections(userId)
       ]);
 
@@ -252,7 +252,7 @@ export class OptimizationEngine {
           type: 'optimization',
           data: {
             stage: 'error',
-            error: error.message,
+            error: error instanceof Error ? error.message : 'Unknown error',
             message: 'Optimization analysis failed'
           }
         });
@@ -859,7 +859,7 @@ export class OptimizationEngine {
     );
 
     for (const job of pendingJobs) {
-      const marketplaces = job.data?.marketplaces || [];
+      const marketplaces = (job.data as any)?.marketplaces || [];
       
       for (const marketplace of marketplaces) {
         const relevantInsight = timingInsights.find(insight => 
@@ -1005,7 +1005,7 @@ export class OptimizationEngine {
       throw new Error('Listing not found');
     }
 
-    const analytics = await storage.getPostingSuccessAnalytics(userId, { listingId });
+    const analytics = await storage.getPostingSuccessAnalytics(userId);
     const patterns = await this.getUserPatterns(userId);
 
     // Generate listing-specific insights

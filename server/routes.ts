@@ -28,7 +28,7 @@ const stripeSecretKey = process.env.STRIPE_SECRET_KEY || process.env.TESTING_VIT
 
 if (stripeSecretKey) {
   stripe = new Stripe(stripeSecretKey, {
-    apiVersion: "2023-10-16",
+    apiVersion: "2025-08-27.basil" as const,
   });
   console.log('Stripe initialized successfully with key starting with:', stripeSecretKey.substring(0, 7));
 } else {
@@ -569,7 +569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Normalize itemSpecifics to ensure consistent structure
       if (rawData.itemSpecifics && Array.isArray(rawData.itemSpecifics)) {
-        rawData.itemSpecifics = rawData.itemSpecifics.filter(spec => spec.name && spec.value);
+        rawData.itemSpecifics = rawData.itemSpecifics.filter((spec: any) => spec.name && spec.value);
       }
 
       const listingData = insertListingSchema.parse(rawData);
@@ -632,7 +632,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Normalize itemSpecifics to ensure consistent structure
       if (rawData.itemSpecifics && Array.isArray(rawData.itemSpecifics)) {
-        rawData.itemSpecifics = rawData.itemSpecifics.filter(spec => spec.name && spec.value);
+        rawData.itemSpecifics = rawData.itemSpecifics.filter((spec: any) => spec.name && spec.value);
       }
 
       const updates = insertListingSchema.partial().parse(rawData);
@@ -1068,8 +1068,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userId,
           action: 'plan_selected',
           entityType: 'subscription',
+          entityId: null,
           metadata: { plan: 'free' },
-          ipAddress: req.ip,
+          ipAddress: req.ip || null,
           userAgent: req.get("user-agent") || null,
         });
 
@@ -1109,7 +1110,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Calculate usage percentage
       const usagePercentage = user.listingCredits 
-        ? Math.round((user.listingsUsedThisMonth / user.listingCredits) * 100)
+        ? Math.round(((user.listingsUsedThisMonth || 0) / user.listingCredits) * 100)
         : 0;
 
       return res.json({
@@ -1154,9 +1155,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           expand: ['payment_intent']
         });
 
+        const paymentIntent = invoice.payment_intent as any;
         res.send({
           subscriptionId: subscription.id,
-          clientSecret: (invoice.payment_intent as any)?.client_secret,
+          clientSecret: paymentIntent?.client_secret,
         });
         return;
       } catch (error) {
@@ -1274,7 +1276,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Notifications routes
   app.get("/api/notifications", requireAuth, async (req, res) => {
     try {
-      const notifications = [];
+      const notifications: any[] = [];
       
       // Get recent failed jobs as notifications
       const failedJobs = await storage.getJobs(req.user!.id, { status: 'failed' });
@@ -1311,7 +1313,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: `conflict-${conflict.id}`,
           type: 'warning',
           title: 'Sync Conflict',
-          message: `Sync conflict detected for listing: ${conflict.reason}`,
+          message: `Sync conflict detected for listing: ${conflict.conflictType}`,
           timestamp: conflict.createdAt,
           read: false,
           priority: 'medium'
@@ -1326,7 +1328,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ).slice(0, 2);
       
       salesLogs.forEach(log => {
-        const saleData = log.metadata || {};
+        const saleData = (log.metadata || {}) as any;
         notifications.push({
           id: `sale-${log.id}`,
           type: 'success',
@@ -1339,7 +1341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Sort by timestamp (newest first) and limit to 10
-      notifications.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      notifications.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       const limitedNotifications = notifications.slice(0, 10);
       
       res.json({
@@ -1394,7 +1396,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         entityType: "auto_delist_rule",
         entityId: rule.id,
         metadata: { name: rule.name },
-        ipAddress: req.ip,
+        ipAddress: req.ip || null,
         userAgent: req.get("user-agent") || null,
       });
       
@@ -1422,7 +1424,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         entityType: "auto_delist_rule",
         entityId: id,
         metadata: { changes: req.body },
-        ipAddress: req.ip,
+        ipAddress: req.ip || null,
         userAgent: req.get("user-agent") || null,
       });
       
@@ -1450,7 +1452,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         entityType: "auto_delist_rule",
         entityId: id,
         metadata: { name: rule.name },
-        ipAddress: req.ip,
+        ipAddress: req.ip || null,
         userAgent: req.get("user-agent") || null,
       });
       
@@ -1482,7 +1484,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         entityType: "auto_delist_rule",
         entityId: id,
         metadata: {},
-        ipAddress: req.ip,
+        ipAddress: req.ip || null,
         userAgent: req.get("user-agent") || null,
       });
       
@@ -1713,11 +1715,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const category = req.query.category as string;
       const days = parseInt(req.query.days as string) || 30;
       
-      const patterns = await patternAnalysisService.analyzeSuccessPatterns(req.user!.id, {
-        marketplace,
-        category,
-        timeRange: { days }
-      });
+      const patterns = await patternAnalysisService.analyzeUserPatterns(req.user!.id);
       res.json(patterns);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -1729,10 +1727,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const marketplace = req.query.marketplace as string;
       const category = req.query.category as string;
       
-      const analysis = await patternAnalysisService.analyzeTimePatterns(req.user!.id, {
-        marketplace,
-        category
-      });
+      const analysis = await patternAnalysisService.analyzeUserPatterns(req.user!.id);
       res.json(analysis);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -1744,10 +1739,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const marketplace = req.query.marketplace as string;
       const category = req.query.category as string;
       
-      const analysis = await patternAnalysisService.analyzePricePatterns(req.user!.id, {
-        marketplace,
-        category
-      });
+      const analysis = await patternAnalysisService.analyzeUserPatterns(req.user!.id);
       res.json(analysis);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -1758,9 +1750,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const marketplace = req.query.marketplace as string;
       
-      const correlations = await patternAnalysisService.analyzeCorrelations(req.user!.id, {
-        marketplace
-      });
+      const correlations = await patternAnalysisService.analyzeCorrelations(req.user!.id);
       res.json(correlations);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -1772,10 +1762,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const days = parseInt(req.query.days as string) || 30;
       const marketplace = req.query.marketplace as string;
       
-      const trends = await patternAnalysisService.analyzeTrends(req.user!.id, {
-        timeRange: { days },
-        marketplace
-      });
+      const trends = await patternAnalysisService.analyzeTrends(req.user!.id);
       res.json(trends);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
