@@ -19,7 +19,7 @@ const AccordionItem = React.forwardRef<
 AccordionItem.displayName = "AccordionItem"
 
 const AccordionTrigger = React.forwardRef<
-  HTMLButtonElement,
+  React.ElementRef<typeof AccordionPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
 >(({ className, children, ...props }, ref) => (
   <AccordionPrimitive.Header className="flex w-full items-center">
@@ -29,6 +29,8 @@ const AccordionTrigger = React.forwardRef<
       {...props}
     >
       <div
+        role="button"
+        tabIndex={0}
         className={cn(
           "flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180",
           className,
