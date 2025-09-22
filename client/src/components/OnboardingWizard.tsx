@@ -51,8 +51,9 @@ export default function OnboardingWizard() {
   const updateProgressMutation = useMutation({
     mutationFn: (data: { currentStep: number; completedStep?: number }) =>
       apiRequest("POST", "/api/onboarding/progress", data),
-    onSuccess: (data) => {
-      setCompletedSteps(data.progress.completedSteps || []);
+    onSuccess: async (response) => {
+      const data = await response.json();
+      setCompletedSteps(data.progress?.completedSteps || []);
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/progress"] });
     },
   });

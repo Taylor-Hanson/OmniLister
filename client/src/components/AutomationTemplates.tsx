@@ -194,7 +194,7 @@ export default function AutomationTemplates() {
   // Duplicate template mutation
   const duplicateTemplateMutation = useMutation({
     mutationFn: (id: string) =>
-      apiRequest(`/api/automation/templates/${id}/duplicate`, { method: 'POST' }),
+      apiRequest('POST', `/api/automation/templates/${id}/duplicate`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation/templates'] });
       toast({

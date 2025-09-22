@@ -590,7 +590,7 @@ export const webhookConfigurations = pgTable("webhook_configurations", {
 });
 
 // Webhook Events - Store incoming webhook events for processing and auditing
-export const webhookEvents = pgTable("webhook_events", {
+export const webhookEvents: any = pgTable("webhook_events", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
   marketplace: text("marketplace").notNull(),
@@ -608,7 +608,7 @@ export const webhookEvents = pgTable("webhook_events", {
   errorMessage: text("error_message"),
   errorDetails: jsonb("error_details"),
   syncJobId: uuid("sync_job_id").references(() => crossPlatformSyncJobs.id, { onDelete: "set null" }),
-  duplicateOfEventId: uuid("duplicate_of_event_id").references(() => webhookEvents.id, { onDelete: "set null" }),
+  duplicateOfEventId: uuid("duplicate_of_event_id").references((): any => webhookEvents.id, { onDelete: "set null" }),
   processingTime: integer("processing_time"), // Time taken to process in milliseconds
   ipAddress: text("ip_address"), // Source IP for security
   userAgent: text("user_agent"),
