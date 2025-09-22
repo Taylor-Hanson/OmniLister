@@ -90,7 +90,7 @@ export default function AutomationDashboard() {
   // Emergency stop mutation
   const emergencyStopMutation = useMutation({
     mutationFn: () => 
-      apiRequest('/api/automation/emergency-stop', { method: 'POST' }),
+      apiRequest('POST', '/api/automation/emergency-stop'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation'] });
       toast({

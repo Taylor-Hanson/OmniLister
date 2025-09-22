@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -141,21 +141,22 @@ export default function AutomationRules() {
   // Fetch existing rules
   const { data: existingRules } = useQuery({
     queryKey: ['/api/automation/rules'],
-    onSuccess: (data: any) => {
-      if (data?.poshmark) poshmarkForm.reset(data.poshmark);
-      if (data?.mercari) mercariForm.reset(data.mercari);
-      if (data?.depop) depopForm.reset(data.depop);
-      if (data?.grailed) grailedForm.reset(data.grailed);
-    }
   });
+
+  // Update forms when data loads
+  useEffect(() => {
+    if (existingRules) {
+      if (existingRules?.poshmark) poshmarkForm.reset(existingRules.poshmark);
+      if (existingRules?.mercari) mercariForm.reset(existingRules.mercari);
+      if (existingRules?.depop) depopForm.reset(existingRules.depop);
+      if (existingRules?.grailed) grailedForm.reset(existingRules.grailed);
+    }
+  }, [existingRules, poshmarkForm, mercariForm, depopForm, grailedForm]);
 
   // Save rules mutation
   const saveRulesMutation = useMutation({
     mutationFn: (data: { marketplace: string; rules: any }) =>
-      apiRequest('/api/automation/rules', {
-        method: 'POST',
-        body: JSON.stringify(data)
-      }),
+      apiRequest('POST', '/api/automation/rules', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation/rules'] });
       toast({

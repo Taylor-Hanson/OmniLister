@@ -70,10 +70,8 @@ export default function AutomationLogs() {
       Object.entries(filters).forEach(([key, value]) => {
         if (value && value !== 'all') params.append(key, value);
       });
-      const response = await apiRequest(`/api/automation/logs?${params.toString()}`, {
-        method: 'GET'
-      });
-      return response;
+      const response = await apiRequest('GET', `/api/automation/logs?${params.toString()}`);
+      return response.json();
     },
     refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
   });
@@ -82,10 +80,8 @@ export default function AutomationLogs() {
   const { data: stats } = useQuery<LogStats>({
     queryKey: ['/api/automation/logs/stats', filters.timeRange],
     queryFn: async () => {
-      const response = await apiRequest(`/api/automation/logs/stats?timeRange=${filters.timeRange}`, {
-        method: 'GET'
-      });
-      return response;
+      const response = await apiRequest('GET', `/api/automation/logs/stats?timeRange=${filters.timeRange}`);
+      return response.json();
     },
   });
 
@@ -98,13 +94,11 @@ export default function AutomationLogs() {
 
   const handleExportLogs = async () => {
     try {
-      const response = await apiRequest('/api/automation/logs/export', {
-        method: 'POST',
-        body: JSON.stringify(filters)
-      });
+      const response = await apiRequest('POST', '/api/automation/logs/export', filters);
+      const data = await response.json();
       
       // Create download link
-      const blob = new Blob([JSON.stringify(response, null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -130,7 +124,7 @@ export default function AutomationLogs() {
     }
 
     try {
-      await apiRequest('/api/automation/logs', { method: 'DELETE' });
+      await apiRequest('DELETE', '/api/automation/logs');
       refetch();
       toast({
         title: "Logs Cleared",

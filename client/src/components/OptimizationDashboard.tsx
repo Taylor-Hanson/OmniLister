@@ -47,6 +47,51 @@ interface PerformanceTrend {
   confidence: number;
 }
 
+interface OptimizationInsightsData {
+  overallScore: number;
+  trend: 'up' | 'down' | 'stable';
+  marketplacePerformance: Array<{
+    marketplace: string;
+    avgSuccessScore: number;
+    conversionRate: number;
+    totalPosts: number;
+  }>;
+  categoryInsights: Array<{
+    category: string;
+    performance: number;
+    trend: string;
+  }>;
+  recommendations: Array<{
+    title: string;
+    description: string;
+    priority: 'high' | 'medium' | 'low';
+  }>;
+}
+
+interface TimeAnalysisData {
+  timeSlots: Array<{
+    dayOfWeek: number;
+    hourOfDay: number;
+    avgSuccessScore: number;
+    avgEngagement: number;
+    conversionRate: number;
+    sampleSize: number;
+  }>;
+  bestTimes: Array<{
+    dayOfWeek: number;
+    hourOfDay: number;
+    score: number;
+  }>;
+}
+
+interface PatternsData {
+  categories: Array<{
+    category: string;
+    avgSuccessScore: number;
+    totalPosts: number;
+  }>;
+}
+
 interface OptimizationInsights {
   overallScore: number;
   opportunities: OptimizationOpportunity[];
@@ -246,31 +291,31 @@ export default function OptimizationDashboard() {
   const [autoOptimizationEnabled, setAutoOptimizationEnabled] = useState(false);
 
   // Fetch optimization insights
-  const { data: insights, isLoading: loadingInsights } = useQuery({
+  const { data: insights, isLoading: loadingInsights } = useQuery<OptimizationInsightsData>({
     queryKey: ['/api/optimization/insights'],
     enabled: !!user,
   });
 
   // Fetch optimization opportunities
-  const { data: opportunities, isLoading: loadingOpportunities } = useQuery({
+  const { data: opportunities, isLoading: loadingOpportunities } = useQuery<OptimizationOpportunity[]>({
     queryKey: ['/api/optimization/opportunities'],
     enabled: !!user,
   });
 
   // Fetch performance trends
-  const { data: trends, isLoading: loadingTrends } = useQuery({
+  const { data: trends, isLoading: loadingTrends } = useQuery<PerformanceTrend>({
     queryKey: ['/api/optimization/trends', { days: 30, marketplace: selectedMarketplace }],
     enabled: !!user,
   });
 
   // Fetch time analysis data
-  const { data: timeAnalysis, isLoading: loadingTimeAnalysis } = useQuery({
+  const { data: timeAnalysis, isLoading: loadingTimeAnalysis } = useQuery<TimeAnalysisData>({
     queryKey: ['/api/optimization/time-analysis', { marketplace: selectedMarketplace, category: selectedCategory }],
     enabled: !!user,
   });
 
   // Fetch patterns data
-  const { data: patterns, isLoading: loadingPatterns } = useQuery({
+  const { data: patterns, isLoading: loadingPatterns } = useQuery<PatternsData>({
     queryKey: ['/api/optimization/patterns', { marketplace: selectedMarketplace, category: selectedCategory, days: 30 }],
     enabled: !!user,
   });
@@ -278,11 +323,7 @@ export default function OptimizationDashboard() {
   // Apply optimization recommendations mutation
   const applyOptimizationMutation = useMutation({
     mutationFn: async (data: { recommendations: any[]; applyScheduling: boolean; applyPricing: boolean }) =>
-      apiRequest('/api/optimization/apply-recommendations', {
-        method: 'POST',
-        body: JSON.stringify(data),
-        headers: { 'Content-Type': 'application/json' }
-      }),
+      apiRequest('POST', '/api/optimization/apply-recommendations', data),
     onSuccess: () => {
       toast({
         title: "Optimization Applied",

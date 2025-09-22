@@ -31,6 +31,59 @@ import OptimizationDashboard from "@/components/OptimizationDashboard";
 // Color palette for charts
 const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#14b8a6'];
 
+interface AnalyticsOverview {
+  totalRevenue: number;
+  totalProfit: number;
+  profitMargin: number;
+  conversionRate: number;
+  salesVelocity: {
+    daily: number;
+    weekly: number;
+    monthly: number;
+  };
+  staleInventory: number;
+  avgMargin: number;
+  opportunities: Array<{
+    type: string;
+    description: string;
+    impact: number;
+  }>;
+}
+
+interface RevenueData {
+  chartData: Array<{
+    date: string;
+    revenue: number;
+    sales: number;
+  }>;
+  totalRevenue: number;
+  growth: number;
+}
+
+interface InventoryData {
+  totalItems: number;
+  activeListings: number;
+  soldItems: number;
+  categories: Array<{
+    name: string;
+    count: number;
+    value: number;
+  }>;
+}
+
+interface CompetitionData {
+  opportunities: Array<{
+    type: string;
+    description: string;
+    impact: number;
+  }>;
+  categoryPerformance: Array<{
+    category: string;
+    revenue: number;
+    marketShare: number;
+  }>;
+}
+
 // Custom animated counter component
 function AnimatedCounter({ value, prefix = "", suffix = "", decimals = 0 }: any) {
   const [displayValue, setDisplayValue] = useState(0);
@@ -112,17 +165,17 @@ export default function Analytics() {
   const [selectedCategory, setSelectedCategory] = useState("all");
 
   // Fetch all analytics data
-  const { data: overview, isLoading: loadingOverview } = useQuery({
+  const { data: overview, isLoading: loadingOverview } = useQuery<AnalyticsOverview>({
     queryKey: ['/api/analytics/overview', timeRange],
     enabled: !!user,
   });
 
-  const { data: revenue, isLoading: loadingRevenue } = useQuery({
+  const { data: revenue, isLoading: loadingRevenue } = useQuery<RevenueData>({
     queryKey: ['/api/analytics/revenue', timeRange],
     enabled: !!user,
   });
 
-  const { data: inventory, isLoading: loadingInventory } = useQuery({
+  const { data: inventory, isLoading: loadingInventory } = useQuery<InventoryData>({
     queryKey: ['/api/analytics/inventory'],
     enabled: !!user,
   });
@@ -137,7 +190,7 @@ export default function Analytics() {
     enabled: !!user,
   });
 
-  const { data: competition, isLoading: loadingCompetition } = useQuery({
+  const { data: competition, isLoading: loadingCompetition } = useQuery<CompetitionData>({
     queryKey: ['/api/analytics/competition'],
     enabled: !!user,
   });

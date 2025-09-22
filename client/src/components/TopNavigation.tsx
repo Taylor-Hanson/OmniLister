@@ -15,8 +15,20 @@ export default function TopNavigation({ onMenuClick }: TopNavigationProps) {
   const { isConnected } = useWebSocket();
   const [searchQuery, setSearchQuery] = useState("");
 
+  interface NotificationsData {
+    unreadCount: number;
+    notifications: Array<{
+      id: string;
+      title: string;
+      message: string;
+      type: string;
+      read: boolean;
+      createdAt: string;
+    }>;
+  }
+
   // Fetch real notifications
-  const { data: notificationsData } = useQuery({
+  const { data: notificationsData } = useQuery<NotificationsData>({
     queryKey: ['/api/notifications'],
     enabled: !!user,
     refetchInterval: 30000, // Refresh every 30 seconds

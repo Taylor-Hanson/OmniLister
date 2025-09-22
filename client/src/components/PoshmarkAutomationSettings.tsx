@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -246,21 +246,22 @@ export default function PoshmarkAutomationSettings() {
   // Fetch existing settings
   const { data: existingSettings } = useQuery({
     queryKey: ['/api/automation/poshmark/settings'],
-    onSuccess: (data: any) => {
-      if (data?.share) shareForm.reset(data.share);
-      if (data?.follow) followForm.reset(data.follow);
-      if (data?.offer) offerForm.reset(data.offer);
-      if (data?.advanced) advancedForm.reset(data.advanced);
-    }
   });
+
+  // Update forms when data loads
+  useEffect(() => {
+    if (existingSettings) {
+      if (existingSettings?.share) shareForm.reset(existingSettings.share);
+      if (existingSettings?.follow) followForm.reset(existingSettings.follow);
+      if (existingSettings?.offer) offerForm.reset(existingSettings.offer);
+      if (existingSettings?.advanced) advancedForm.reset(existingSettings.advanced);
+    }
+  }, [existingSettings, shareForm, followForm, offerForm, advancedForm]);
 
   // Save settings mutation
   const saveSettingsMutation = useMutation({
     mutationFn: (data: { section: string; settings: any }) =>
-      apiRequest('/api/automation/poshmark/settings', {
-        method: 'POST',
-        body: JSON.stringify(data)
-      }),
+      apiRequest('POST', '/api/automation/poshmark/settings', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation/poshmark/settings'] });
       toast({

@@ -60,8 +60,8 @@ export class CircuitBreakerService {
           state: "closed",
           reason: "Circuit breaker is closed - requests allowed",
           metadata: {
-            failureCount: circuitBreaker.failureCount,
-            successCount: circuitBreaker.successCount,
+            failureCount: (circuitBreaker.failureCount || 0),
+            successCount: (circuitBreaker.successCount || 0),
             timeInState,
             lastFailure: circuitBreaker.lastFailureAt || undefined,
             lastSuccess: circuitBreaker.lastSuccessAt || undefined,
@@ -78,8 +78,8 @@ export class CircuitBreakerService {
             state: "half_open",
             reason: "Circuit breaker transitioning to half-open - limited requests allowed",
             metadata: {
-              failureCount: circuitBreaker.failureCount,
-              successCount: circuitBreaker.successCount,
+              failureCount: (circuitBreaker.failureCount || 0),
+              successCount: (circuitBreaker.successCount || 0),
               timeInState,
               lastFailure: circuitBreaker.lastFailureAt || undefined,
               lastSuccess: circuitBreaker.lastSuccessAt || undefined,
@@ -94,8 +94,8 @@ export class CircuitBreakerService {
             reason: `Circuit breaker is open - requests blocked until ${nextRetryAt.toISOString()}`,
             nextRetryAt,
             metadata: {
-              failureCount: circuitBreaker.failureCount,
-              successCount: circuitBreaker.successCount,
+              failureCount: (circuitBreaker.failureCount || 0),
+              successCount: (circuitBreaker.successCount || 0),
               timeInState,
               lastFailure: circuitBreaker.lastFailureAt || undefined,
               lastSuccess: circuitBreaker.lastSuccessAt || undefined,
@@ -105,14 +105,14 @@ export class CircuitBreakerService {
 
       case "half_open":
         // Check if we've reached the max concurrent requests limit
-        if (circuitBreaker.currentHalfOpenRequests >= effectiveConfig.halfOpenMaxRequests) {
+        if (((circuitBreaker.currentHalfOpenRequests || 0) || 0) >= effectiveConfig.halfOpenMaxRequests) {
           return {
             allowed: false,
             state: "half_open",
-            reason: `Circuit breaker is half-open but at request limit (${circuitBreaker.currentHalfOpenRequests}/${effectiveConfig.halfOpenMaxRequests})`,
+            reason: `Circuit breaker is half-open but at request limit (${(circuitBreaker.currentHalfOpenRequests || 0)}/${effectiveConfig.halfOpenMaxRequests})`,
             metadata: {
-              failureCount: circuitBreaker.failureCount,
-              successCount: circuitBreaker.successCount,
+              failureCount: (circuitBreaker.failureCount || 0),
+              successCount: (circuitBreaker.successCount || 0),
               timeInState,
               lastFailure: circuitBreaker.lastFailureAt || undefined,
               lastSuccess: circuitBreaker.lastSuccessAt || undefined,
@@ -126,8 +126,8 @@ export class CircuitBreakerService {
             state: "half_open",
             reason: "Circuit breaker is half-open - limited request allowed",
             metadata: {
-              failureCount: circuitBreaker.failureCount,
-              successCount: circuitBreaker.successCount,
+              failureCount: (circuitBreaker.failureCount || 0),
+              successCount: (circuitBreaker.successCount || 0),
               timeInState,
               lastFailure: circuitBreaker.lastFailureAt || undefined,
               lastSuccess: circuitBreaker.lastSuccessAt || undefined,
@@ -163,13 +163,13 @@ export class CircuitBreakerService {
         // Reset failure count on success
         await this.updateCircuitBreaker(marketplace, {
           failureCount: 0,
-          successCount: circuitBreaker.successCount + 1,
+          successCount: ((circuitBreaker.successCount || 0) || 0) + 1,
           lastSuccessAt: now,
         });
         break;
 
       case "half_open":
-        const newSuccessCount = circuitBreaker.successCount + 1;
+        const newSuccessCount = ((circuitBreaker.successCount || 0) || 0) + 1;
         
         // Decrement half-open request counter
         await this.decrementHalfOpenRequests(marketplace);
@@ -190,7 +190,7 @@ export class CircuitBreakerService {
       case "open":
         // Successes shouldn't happen in open state, but if they do, record them
         await this.updateCircuitBreaker(marketplace, {
-          successCount: circuitBreaker.successCount + 1,
+          successCount: (circuitBreaker.successCount || 0) + 1,
           lastSuccessAt: now,
         });
         break;
@@ -210,7 +210,7 @@ export class CircuitBreakerService {
 
     switch (circuitBreaker.status) {
       case "closed":
-        const newFailureCount = circuitBreaker.failureCount + 1;
+        const newFailureCount = (circuitBreaker.failureCount || 0) + 1;
         
         // Check if we've reached the failure threshold
         if (newFailureCount >= effectiveConfig.failureThreshold) {
@@ -235,7 +235,7 @@ export class CircuitBreakerService {
       case "open":
         // Record failure but stay in open state
         await this.updateCircuitBreaker(marketplace, {
-          failureCount: circuitBreaker.failureCount + 1,
+          failureCount: (circuitBreaker.failureCount || 0) + 1,
           lastFailureAt: now,
         });
         break;
@@ -359,9 +359,9 @@ export class CircuitBreakerService {
   private async incrementHalfOpenRequests(marketplace: string): Promise<void> {
     const circuitBreaker = this.circuitBreakers.get(marketplace);
     if (circuitBreaker) {
-      circuitBreaker.currentHalfOpenRequests += 1;
+      circuitBreaker.currentHalfOpenRequests = (circuitBreaker.currentHalfOpenRequests || 0) + 1;
       await this.updateCircuitBreaker(marketplace, {
-        currentHalfOpenRequests: circuitBreaker.currentHalfOpenRequests,
+        currentHalfOpenRequests: (circuitBreaker.currentHalfOpenRequests || 0),
       });
     }
   }
@@ -371,10 +371,10 @@ export class CircuitBreakerService {
    */
   private async decrementHalfOpenRequests(marketplace: string): Promise<void> {
     const circuitBreaker = this.circuitBreakers.get(marketplace);
-    if (circuitBreaker && circuitBreaker.currentHalfOpenRequests > 0) {
-      circuitBreaker.currentHalfOpenRequests -= 1;
+    if (circuitBreaker && (circuitBreaker.currentHalfOpenRequests || 0) > 0) {
+      circuitBreaker.currentHalfOpenRequests = (circuitBreaker.currentHalfOpenRequests || 0) - 1;
       await this.updateCircuitBreaker(marketplace, {
-        currentHalfOpenRequests: circuitBreaker.currentHalfOpenRequests,
+        currentHalfOpenRequests: (circuitBreaker.currentHalfOpenRequests || 0),
       });
     }
   }
@@ -456,14 +456,14 @@ export class CircuitBreakerService {
       lastStateChange = circuitBreaker.updatedAt;
     }
 
-    const totalRequests = circuitBreaker.failureCount + circuitBreaker.successCount;
-    const avgFailureRate = totalRequests > 0 ? circuitBreaker.failureCount / totalRequests : 0;
+    const totalRequests = (circuitBreaker.failureCount || 0) + (circuitBreaker.successCount || 0);
+    const avgFailureRate = totalRequests > 0 ? (circuitBreaker.failureCount || 0) / totalRequests : 0;
 
     return {
       state: circuitBreaker.status as CircuitBreakerState,
       uptime: circuitBreaker.status === "closed" ? 100 : 0, // Simplified uptime calculation
-      totalFailures: circuitBreaker.failureCount,
-      totalSuccesses: circuitBreaker.successCount,
+      totalFailures: (circuitBreaker.failureCount || 0),
+      totalSuccesses: (circuitBreaker.successCount || 0),
       avgFailureRate,
       timeInCurrentState,
       lastStateChange,
@@ -511,7 +511,7 @@ export class CircuitBreakerService {
     }
 
     const config = this.DEFAULT_CONFIG;
-    return circuitBreaker.currentHalfOpenRequests < config.halfOpenMaxRequests;
+    return (circuitBreaker.currentHalfOpenRequests || 0) < config.halfOpenMaxRequests;
   }
 }
 

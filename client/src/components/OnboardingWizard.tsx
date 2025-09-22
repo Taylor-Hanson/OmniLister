@@ -30,6 +30,12 @@ interface OnboardingProgress {
   updatedAt: Date;
 }
 
+interface OnboardingData {
+  progress: OnboardingProgress;
+  steps: OnboardingStep[];
+  progressPercentage: number;
+}
+
 export default function OnboardingWizard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -38,21 +44,25 @@ export default function OnboardingWizard() {
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
 
   // Fetch onboarding progress
-  const { data: onboardingData, isLoading } = useQuery({
+  const { data: onboardingData, isLoading } = useQuery<OnboardingData>({
     queryKey: ["/api/onboarding/progress"],
     retry: false,
   });
 
-  const progress = onboardingData?.progress as OnboardingProgress;
-  const steps = onboardingData?.steps as OnboardingStep[];
+  const progress = onboardingData?.progress || { 
+    id: '', userId: '', currentStep: 0, completedSteps: [], 
+    skipped: false, completedAt: null, startedAt: new Date(), updatedAt: new Date()
+  };
+  const steps = onboardingData?.steps || [];
   const progressPercentage = onboardingData?.progressPercentage || 0;
 
   // Update progress mutation
   const updateProgressMutation = useMutation({
     mutationFn: (data: { currentStep: number; completedStep?: number }) =>
       apiRequest("POST", "/api/onboarding/progress", data),
-    onSuccess: (data) => {
-      setCompletedSteps(data.progress.completedSteps || []);
+    onSuccess: async (response) => {
+      const data = await response.json();
+      setCompletedSteps(data.progress?.completedSteps || []);
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/progress"] });
     },
   });
