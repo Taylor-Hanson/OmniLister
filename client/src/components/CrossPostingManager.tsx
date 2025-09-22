@@ -29,7 +29,139 @@ import {
   ExternalLink,
   RefreshCw
 } from 'lucide-react';
-import { marketplaceConfig, type MarketplaceConfig } from '../../../shared/marketplaceConfig';
+// import { marketplaceConfig, type MarketplaceConfig } from '../../../shared/marketplaceConfig';
+
+// Temporary type definition
+type MarketplaceConfig = {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  icon: string;
+  color: string;
+  authType: string;
+  features: string[];
+  requiredCredentials?: Array<{
+    label: string;
+    key: string;
+    type: string;
+    placeholder: string;
+  }>;
+  apiAvailable: boolean;
+  popular: boolean;
+};
+
+// Temporary marketplace config
+const marketplaceConfig: Record<string, MarketplaceConfig> = {
+  ebay: {
+    id: "ebay",
+    name: "eBay",
+    description: "World's largest online marketplace",
+    category: "general",
+    icon: "fas fa-shopping-cart",
+    color: "bg-blue-500",
+    authType: "oauth",
+    features: ["Global Reach", "Auction & Buy It Now", "Seller Protection"],
+    apiAvailable: true,
+    popular: true,
+  },
+  mercari: {
+    id: "mercari",
+    name: "Mercari",
+    description: "Mobile-first marketplace for everything",
+    category: "general",
+    icon: "fas fa-shopping-bag",
+    color: "bg-red-500",
+    authType: "username_password",
+    features: ["Mobile First", "Easy Selling", "Smart Pricing"],
+    requiredCredentials: [
+      { label: "Email", key: "email", type: "text", placeholder: "your@email.com" },
+      { label: "Password", key: "password", type: "password", placeholder: "Your Mercari password" },
+    ],
+    apiAvailable: false,
+    popular: true,
+  },
+  facebook: {
+    id: "facebook",
+    name: "Facebook Marketplace",
+    description: "Local and shipping marketplace on Facebook",
+    category: "general",
+    icon: "fab fa-facebook",
+    color: "bg-blue-600",
+    authType: "username_password",
+    features: ["Local Sales", "Social Integration", "No Selling Fees"],
+    requiredCredentials: [
+      { label: "Email", key: "email", type: "text", placeholder: "your@email.com" },
+      { label: "Password", key: "password", type: "password", placeholder: "Your Facebook password" },
+    ],
+    apiAvailable: false,
+    popular: true,
+  },
+  etsy: {
+    id: "etsy",
+    name: "Etsy",
+    description: "Marketplace for handmade and vintage items",
+    category: "general",
+    icon: "fab fa-etsy",
+    color: "bg-orange-600",
+    authType: "username_password",
+    features: ["Handmade Focus", "Creative Community", "Custom Orders"],
+    requiredCredentials: [
+      { label: "Email", key: "email", type: "text", placeholder: "your@email.com" },
+      { label: "Password", key: "password", type: "password", placeholder: "Your Etsy password" },
+    ],
+    apiAvailable: false,
+    popular: true,
+  },
+  poshmark: {
+    id: "poshmark",
+    name: "Poshmark",
+    description: "Social marketplace for fashion",
+    category: "fashion",
+    icon: "fas fa-tshirt",
+    color: "bg-pink-500",
+    authType: "username_password",
+    features: ["Social Selling", "Fashion Focus", "Easy Shipping"],
+    apiAvailable: false,
+    popular: true,
+  },
+  depop: {
+    id: "depop",
+    name: "Depop",
+    description: "Fashion marketplace for unique finds",
+    category: "fashion",
+    icon: "fas fa-heart",
+    color: "bg-purple-500",
+    authType: "username_password",
+    features: ["Vintage Fashion", "Creative Community", "Mobile App"],
+    apiAvailable: false,
+    popular: true,
+  },
+  grailed: {
+    id: "grailed",
+    name: "Grailed",
+    description: "Marketplace for men's fashion",
+    category: "fashion",
+    icon: "fas fa-user-tie",
+    color: "bg-gray-800",
+    authType: "username_password",
+    features: ["Men's Fashion", "High-End Items", "Curated Selection"],
+    apiAvailable: false,
+    popular: true,
+  },
+  vinted: {
+    id: "vinted",
+    name: "Vinted",
+    description: "Marketplace for second-hand fashion",
+    category: "fashion",
+    icon: "fas fa-recycle",
+    color: "bg-green-500",
+    authType: "username_password",
+    features: ["Second-Hand Focus", "No Fees", "Easy Listing"],
+    apiAvailable: false,
+    popular: true,
+  },
+};
 
 interface MarketplaceConnection {
   marketplace: string;
