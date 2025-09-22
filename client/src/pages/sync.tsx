@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -46,7 +47,7 @@ import {
   BookOpen,
   Timer,
   BarChart3,
-  Link
+  Link as LinkIcon
 } from "lucide-react";
 import { format, formatDistance } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -669,14 +670,18 @@ export default function Sync() {
                           <strong>No listings to sync.</strong> Connect a marketplace and create your first listing to begin syncing.
                         </div>
                         <div className="flex gap-2">
-                          <Button size="sm" variant="outline">
-                            <Link className="h-4 w-4 mr-2" />
-                            Connect Marketplace
-                          </Button>
-                          <Button size="sm">
-                            <Plus className="h-4 w-4 mr-2" />
-                            Create Listing
-                          </Button>
+                          <Link href="/connections">
+                            <Button size="sm" variant="outline">
+                              <LinkIcon className="h-4 w-4 mr-2" />
+                              Connect Marketplace
+                            </Button>
+                          </Link>
+                          <Link href="/create-listing">
+                            <Button size="sm">
+                              <Plus className="h-4 w-4 mr-2" />
+                              Create Listing
+                            </Button>
+                          </Link>
                         </div>
                       </AlertDescription>
                     </Alert>

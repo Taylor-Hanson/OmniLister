@@ -3,6 +3,7 @@ import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/api";
 import { insertListingSchema, EBAY_CONDITIONS, LISTING_FORMATS, LISTING_DURATIONS } from "@shared/schema";
@@ -967,9 +968,11 @@ export default function CreateListing() {
                       {connectedMarketplaces.length === 0 ? (
                         <div className="text-center py-4 text-muted-foreground">
                           <p className="text-sm">No marketplaces connected</p>
-                          <Button variant="outline" size="sm" className="mt-2">
-                            Connect Marketplaces
-                          </Button>
+                          <Link href="/connections">
+                            <Button variant="outline" size="sm" className="mt-2">
+                              Connect Marketplaces
+                            </Button>
+                          </Link>
                         </div>
                       ) : (
                         connectedMarketplaces.map((marketplace: any) => (

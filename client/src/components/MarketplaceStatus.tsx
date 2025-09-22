@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -153,9 +154,11 @@ export default function MarketplaceStatus() {
           {marketplaces.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <p>No marketplaces configured</p>
-              <Button variant="outline" size="sm" className="mt-2">
-                Connect Marketplaces
-              </Button>
+              <Link href="/connections">
+                <Button variant="outline" size="sm" className="mt-2">
+                  Connect Marketplaces
+                </Button>
+              </Link>
             </div>
           ) : (
             marketplaces.map((marketplace: any) => {
@@ -199,14 +202,16 @@ export default function MarketplaceStatus() {
           )}
         </div>
         
-        <Button
-          variant="ghost"
-          className="w-full mt-4 text-primary hover:bg-primary/10 font-medium text-sm"
-          data-testid="button-add-marketplace"
-        >
-          <i className="fas fa-plus mr-2"></i>
-          Connect New Marketplace
-        </Button>
+        <Link href="/connections">
+          <Button
+            variant="ghost"
+            className="w-full mt-4 text-primary hover:bg-primary/10 font-medium text-sm"
+            data-testid="button-add-marketplace"
+          >
+            <i className="fas fa-plus mr-2"></i>
+            Connect New Marketplace
+          </Button>
+        </Link>
       </CardContent>
     </Card>
   );
