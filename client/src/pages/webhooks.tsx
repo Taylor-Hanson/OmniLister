@@ -97,13 +97,13 @@ export default function WebhooksPage() {
   const [testPayload, setTestPayload] = useState<string>("");
 
   // Fetch webhook configurations
-  const { data: webhookConfigs, isLoading: configsLoading } = useQuery({
+  const { data: webhookConfigs, isLoading: configsLoading } = useQuery<WebhookConfiguration[]>({
     queryKey: ["/api/webhooks/configurations"],
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   // Fetch webhook events
-  const { data: webhookEvents, isLoading: eventsLoading } = useQuery({
+  const { data: webhookEvents, isLoading: eventsLoading } = useQuery<any[]>({
     queryKey: ["/api/webhooks/events", { 
       marketplace: selectedMarketplace !== "all" ? selectedMarketplace : undefined,
       limit: 100 
@@ -112,13 +112,13 @@ export default function WebhooksPage() {
   });
 
   // Fetch polling schedules
-  const { data: pollingSchedules, isLoading: schedulesLoading } = useQuery({
+  const { data: pollingSchedules, isLoading: schedulesLoading } = useQuery<any[]>({
     queryKey: ["/api/polling/schedules"],
     refetchInterval: 30000,
   });
 
   // Fetch webhook health summary
-  const { data: healthSummary, isLoading: healthLoading } = useQuery({
+  const { data: healthSummary, isLoading: healthLoading } = useQuery<any>({
     queryKey: ["/api/webhooks/health", { 
       marketplace: selectedMarketplace !== "all" ? selectedMarketplace : undefined,
       hours: parseInt(timeRange)

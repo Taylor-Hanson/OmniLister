@@ -15,7 +15,7 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 
 // Initialize Stripe - use testing key if production key isn't available
 // Note: The testing keys are mislabeled - TESTING_STRIPE_SECRET_KEY is actually the publishable key
-const stripePublicKey = import.meta.env.VITE_STRIPE_PUBLIC_KEY || import.meta.env.TESTING_STRIPE_SECRET_KEY || '';
+const stripePublicKey = (import.meta as any).env?.VITE_STRIPE_PUBLIC_KEY || (import.meta as any).env?.TESTING_STRIPE_SECRET_KEY || '';
 const stripePromise = loadStripe(stripePublicKey);
 
 // Price IDs for each plan (you'll need to set these up in Stripe)

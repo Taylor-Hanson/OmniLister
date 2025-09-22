@@ -75,12 +75,12 @@ export default function Connections() {
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [importStatus, setImportStatus] = useState<"idle" | "importing" | "success" | "error">("idle");
 
-  const { data: connections = [], isLoading } = useQuery({
+  const { data: connections = [], isLoading } = useQuery<any[]>({
     queryKey: ['/api/marketplaces'],
     enabled: !!user,
   });
 
-  const { data: shopifyProducts, isLoading: isLoadingProducts, refetch: refetchProducts } = useQuery({
+  const { data: shopifyProducts, isLoading: isLoadingProducts, refetch: refetchProducts } = useQuery<any>({
     queryKey: ['/api/marketplaces/shopify/products'],
     enabled: false, // Only fetch when requested
   });

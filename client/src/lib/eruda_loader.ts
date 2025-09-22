@@ -14,7 +14,7 @@
 
 export async function initEruda(): Promise<void> {
   // Only attempt to load Eruda in dev mode and in a real browser environment.
-  if (import.meta.env.MODE !== "development" || typeof window === "undefined") {
+  if ((import.meta as any).env?.MODE !== "development" || typeof window === "undefined") {
     return;
   }
 

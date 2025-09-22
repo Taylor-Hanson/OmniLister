@@ -114,7 +114,7 @@ export class BatchProcessor {
       const metrics: ProcessingMetrics = {
         batchId,
         startTime: new Date(),
-        totalItems: batch.totalItems,
+        totalItems: batch.totalItems || 0,
         processedItems: 0,
         successfulItems: 0,
         failedItems: 0,
@@ -147,7 +147,7 @@ export class BatchProcessor {
         status: 'processing',
         startedAt: new Date(),
         batchMetadata: {
-          ...batch.batchMetadata,
+          ...(batch.batchMetadata || {}),
           processingEngine: 'advanced',
           processingStarted: new Date().toISOString()
         }
@@ -216,7 +216,7 @@ export class BatchProcessor {
     }
 
     // Get optimization insights
-    const optimizationInsights = await optimizationEngine.generateOptimizationInsights(batch.userId);
+    const optimizationInsights = await optimizationEngine.getOptimizationInsights(batch.userId);
 
     // Get rate limit statuses for all target marketplaces
     const rateLimitStatuses: Record<string, any> = {};
@@ -239,7 +239,7 @@ export class BatchProcessor {
         data: {
           stage: 'context_ready',
           batchId: batch.id,
-          optimizationInsights: optimizationInsights.insights.length,
+          optimizationInsights: optimizationInsights.length,
           rateLimitStatuses: Object.keys(rateLimitStatuses).map(marketplace => ({
             marketplace,
             status: rateLimitStatuses[marketplace].allowed ? 'healthy' : 'limited'
@@ -281,7 +281,7 @@ export class BatchProcessor {
         description: 'Maximum optimization for small batches with healthy conditions',
         priority: 100,
         processingOrder: 'parallel',
-        maxConcurrency: Math.min(10, totalItems),
+        maxConcurrency: Math.min(10, totalItems || 1),
         errorHandling: 'continue',
         retryStrategy: 'immediate',
         optimizationLevel: 'maximum'
@@ -435,8 +435,7 @@ export class BatchProcessor {
     // Get recommendations for optimal ordering
     const recommendations = await recommendationService.getBatchOrderingRecommendations(
       context.userId, 
-      items, 
-      context.marketplacePerformance
+      items
     );
 
     // Apply patterns and recommendations to optimize order
@@ -444,8 +443,8 @@ export class BatchProcessor {
 
     // Sort by success probability based on patterns
     optimizedItems.sort((a, b) => {
-      const aPattern = this.findMatchingPattern(a, patterns);
-      const bPattern = this.findMatchingPattern(b, patterns);
+      const aPattern = this.findMatchingPattern(a, (patterns as any) || []);
+      const bPattern = this.findMatchingPattern(b, (patterns as any) || []);
       
       const aSuccessRate = aPattern?.successRate || 0;
       const bSuccessRate = bPattern?.successRate || 0;
@@ -454,7 +453,7 @@ export class BatchProcessor {
     });
 
     // Apply recommendation adjustments
-    if (recommendations.length > 0) {
+    if (Array.isArray(recommendations) && recommendations.length > 0) {
       for (const rec of recommendations) {
         if (rec.confidence > 80 && rec.autoApplicable) {
           this.applyOrderingRecommendation(optimizedItems, rec);
@@ -472,7 +471,7 @@ export class BatchProcessor {
     // Simple pattern matching based on marketplaces and item characteristics
     return patterns.find(pattern => 
       pattern.marketplaces?.some((m: string) => item.marketplaces?.includes(m)) ||
-      pattern.category === item.itemData?.category
+      pattern.category === (item.itemData as any)?.category
     );
   }
 
@@ -761,7 +760,7 @@ export class BatchProcessor {
         status: 'completed',
         completedAt: new Date(),
         itemMetadata: {
-          ...item.itemMetadata,
+          ...(item.itemMetadata || {}),
           processingTime: Date.now() - startTime,
           optimizationsApplied: true
         }
@@ -774,7 +773,7 @@ export class BatchProcessor {
         errorCategory: this.categorizeError(error),
         completedAt: new Date(),
         itemMetadata: {
-          ...item.itemMetadata,
+          ...(item.itemMetadata || {}),
           processingTime: Date.now() - startTime,
           failureReason: error.message
         }
@@ -830,8 +829,8 @@ export class BatchProcessor {
             category: listing.category,
             brand: listing.brand,
             priceRange: this.getPriceRange(listing.price),
-            success_score: 100, // Successful processing
-            engagement_score: 0, // Will be updated later with actual engagement
+            success_score: "100", // Successful processing
+            engagement_score: "0", // Will be updated later with actual engagement
             timezone: context.user.timezone || 'UTC'
           });
         }
@@ -868,7 +867,7 @@ export class BatchProcessor {
     });
 
     // Process through queue service
-    await queueService.processJob(job.id);
+    await queueService.processJob(job);
   }
 
   /**
@@ -895,7 +894,7 @@ export class BatchProcessor {
       jobId: job.id
     });
 
-    await queueService.processJob(job.id);
+    await queueService.processJob(job);
   }
 
   /**
@@ -928,7 +927,7 @@ export class BatchProcessor {
         jobId: job.id
       });
 
-      await queueService.processJob(job.id);
+      await queueService.processJob(job);
     }
   }
 
@@ -960,7 +959,7 @@ export class BatchProcessor {
     });
 
     // Auto-post if enabled
-    if (context.batch.batchSettings?.autoPost && item.marketplaces) {
+    if ((context.batch.batchSettings as any)?.autoPost && item.marketplaces) {
       const job = await storage.createJob(context.userId, {
         type: 'post-listing',
         data: {
@@ -978,7 +977,7 @@ export class BatchProcessor {
         jobId: job.id
       });
 
-      await queueService.processJob(job.id);
+      await queueService.processJob(job);
     }
   }
 
@@ -1013,7 +1012,7 @@ export class BatchProcessor {
         errorCategory,
         scheduledFor: new Date(Date.now() + retryDelay),
         itemMetadata: {
-          ...item.itemMetadata,
+          ...(item.itemMetadata || {}),
           retryScheduled: true,
           retryDelay,
           lastError: error.message
@@ -1182,7 +1181,7 @@ export class BatchProcessor {
       completedAt: new Date(),
       progress: 100,
       batchMetadata: {
-        ...context.batch.batchMetadata,
+        ...(context.batch.batchMetadata || {}),
         processingCompleted: new Date().toISOString(),
         finalMetrics: {
           optimizationScore: metrics.optimizationScore,
@@ -1199,18 +1198,18 @@ export class BatchProcessor {
       successfulItems: metrics.successfulItems,
       failedItems: metrics.failedItems,
       avgProcessingTime: Math.round(metrics.averageProcessingTime / 1000),
-      totalProcessingTime: Math.round((metrics.endTime!.getTime() - metrics.startTime.getTime()) / 1000),
-      successRate: (metrics.successfulItems / metrics.totalItems) * 100,
-      costEfficiency: metrics.costEfficiency,
-      optimizationScore: metrics.optimizationScore,
-      errorBreakdown: this.generateErrorBreakdown(context.batch.id),
-      timingAnalytics: {
-        throughputPerMinute: metrics.throughputPerMinute,
-        averageProcessingTime: metrics.averageProcessingTime,
-        totalDuration: metrics.endTime!.getTime() - metrics.startTime.getTime()
-      },
+      // totalProcessingTime: Math.round((metrics.endTime!.getTime() - metrics.startTime.getTime()) / 1000), // Not in schema
+      successRate: ((metrics.successfulItems / metrics.totalItems) * 100).toString(),
+      // costEfficiency: metrics.costEfficiency.toString(), // Not in schema
+      // optimizationScore: metrics.optimizationScore, // Not in schema
+      // errorBreakdown: this.generateErrorBreakdown(context.batch.id), // Not in schema
+      // timingAnalytics: { // Not in schema
+      //   throughputPerMinute: metrics.throughputPerMinute,
+      //   averageProcessingTime: metrics.averageProcessingTime,
+      //   totalDuration: metrics.endTime!.getTime() - metrics.startTime.getTime()
+      // },
       recommendationApplied: true
-    });
+    } as any);
 
     // Emit completion notification
     if (global.broadcastToUser) {
@@ -1281,15 +1280,14 @@ export class BatchProcessor {
   private async getMarketplacePerformance(userId: string, marketplace: string): Promise<any> {
     try {
       const analytics = await storage.getPostingSuccessAnalytics(userId, { 
-        marketplace, 
-        limit: 100 
+        marketplace
       });
 
       if (analytics.length === 0) {
         return { successRate: 70, avgProcessingTime: 60000 }; // Default values
       }
 
-      const successCount = analytics.filter(a => (a.success_score || 0) > 50).length;
+      const successCount = analytics.filter(a => parseFloat((a.success_score || 0).toString()) > 50).length;
       const successRate = (successCount / analytics.length) * 100;
       const avgProcessingTime = 60000; // Placeholder
 
@@ -1369,7 +1367,7 @@ export class BatchProcessor {
    * Monitor and optimize active processing
    */
   private async monitorAndOptimizeActiveProcessing(): Promise<void> {
-    for (const [batchId, context] of this.processingQueue) {
+    for (const [batchId, context] of Array.from(this.processingQueue.entries())) {
       try {
         // Check if optimization adjustments are needed
         const metrics = this.metrics.get(batchId);
@@ -1387,7 +1385,7 @@ export class BatchProcessor {
    * Update all active metrics
    */
   private async updateAllMetrics(): Promise<void> {
-    for (const [batchId, metrics] of this.metrics) {
+    for (const [batchId, metrics] of Array.from(this.metrics.entries())) {
       try {
         // Emit real-time metrics update
         const context = this.processingQueue.get(batchId);

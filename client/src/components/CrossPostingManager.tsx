@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/use-toast';
 import { apiRequest } from '../lib/api';
+import { MarketplaceConnection } from '../types/sync';
 import { Button } from './ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
@@ -163,13 +164,6 @@ const marketplaceConfig: Record<string, MarketplaceConfig> = {
   },
 };
 
-interface MarketplaceConnection {
-  marketplace: string;
-  isConnected: boolean;
-  lastSyncAt?: string;
-  accessToken?: string;
-  credentials?: any;
-}
 
 interface CrossPostingJob {
   id: string;
@@ -218,19 +212,19 @@ export default function CrossPostingManager() {
   const [customSettings, setCustomSettings] = useState<Record<string, any>>({});
 
   // Fetch marketplace connections
-  const { data: connections = [], isLoading: isLoadingConnections } = useQuery({
+  const { data: connections = [], isLoading: isLoadingConnections } = useQuery<MarketplaceConnection[]>({
     queryKey: ['/api/marketplaces'],
     enabled: !!user,
   });
 
   // Fetch user's listings
-  const { data: listings = [], isLoading: isLoadingListings } = useQuery({
+  const { data: listings = [], isLoading: isLoadingListings } = useQuery<any[]>({
     queryKey: ['/api/listings'],
     enabled: !!user,
   });
 
   // Fetch active cross-posting jobs
-  const { data: activeJobs = [], refetch: refetchJobs } = useQuery({
+  const { data: activeJobs = [], refetch: refetchJobs } = useQuery<any[]>({
     queryKey: ['/api/jobs/cross-posting'],
     enabled: !!user,
     refetchInterval: 2000, // Poll every 2 seconds for updates

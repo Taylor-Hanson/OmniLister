@@ -176,7 +176,7 @@ class PostListingProcessor implements JobProcessor {
             });
           }
 
-          const result = await marketplaceService.createListing(marketplace, listing, connection);
+          const result = await marketplaceService.createListing(listing, marketplace, connection);
           
           // Record successful API request
           await rateLimitService.recordRequest(marketplace, true);
@@ -1030,7 +1030,7 @@ class PoshmarkOfferProcessor implements JobProcessor {
     try {
       // Send offer to likers (using the actual API client through the engine)
       const engine = poshmarkAutomationEngine as any;
-      const likers = listing.externalId ? await engine.apiClient.getLikers(listing.externalId, poshmarkConnection.accessToken) : [];
+      const likers = (listing as any).externalId ? await engine.apiClient.getLikers((listing as any).externalId, poshmarkConnection.accessToken) : [];
       let sent = 0;
       
       for (const liker of likers) {
@@ -1043,8 +1043,8 @@ class PoshmarkOfferProcessor implements JobProcessor {
         // Apply delay
         await new Promise(resolve => setTimeout(resolve, 3000));
 
-        if (listing.externalId) {
-          await engine.apiClient.sendOffer(listing.externalId, {
+        if ((listing as any).externalId) {
+          await engine.apiClient.sendOffer((listing as any).externalId, {
             userId: liker,
             ...offerTemplate
           }, poshmarkConnection.accessToken);
@@ -1340,12 +1340,12 @@ class GrailedPriceDropProcessor implements JobProcessor {
         await new Promise(resolve => setTimeout(resolve, 3000));
 
         // Apply price drop
-        const newPrice = listing.price * (1 - dropPercentage / 100);
+        const newPrice = parseFloat(listing.price || "0") * (1 - dropPercentage / 100);
         // Note: This would typically call Grailed's API to update price
         console.log(`[Grailed] Would update price to ${newPrice} for listing ${listing.id}`);
         
         // Update local listing
-        await storage.updateListing(listing.id, { price: newPrice });
+        await storage.updateListing(listing.id, { price: newPrice.toString() });
         dropped++;
 
         const progress = Math.round((dropped / listings.length) * 100);
@@ -1492,7 +1492,7 @@ class CrossPostingProcessor implements JobProcessor {
         }
 
         // Post to marketplace using marketplace service
-        const marketplaceService = new (await import('./marketplaceService')).MarketplaceService();
+        const marketplaceService = (await import('./marketplaceService')).marketplaceService;
         const postResult = await marketplaceService.postListingToMarketplace(listing, marketplace, connection);
 
         results.push({
@@ -1507,7 +1507,7 @@ class CrossPostingProcessor implements JobProcessor {
         await storage.updateJob(job.id, {
           progress: Math.round((completedCount + failedCount) / marketplaces.length * 100),
           data: {
-            ...job.data,
+            ...(job.data || {}),
             completedMarketplaces: completedCount,
             failedMarketplaces: failedCount,
             results
@@ -1723,7 +1723,7 @@ export class QueueService {
       console.error(`Failed to handle job failure for ${job.id}:`, retryError);
       
       // Fallback to basic retry logic
-      if ((job.attempts || 0) >= job.maxAttempts) {
+      if ((job.attempts || 0) >= (job.maxAttempts || 3)) {
         await storage.updateJob(job.id, {
           status: "failed",
           errorMessage: `${error.message} (retry handling failed: ${retryError instanceof Error ? retryError.message : "unknown"})`,
@@ -1805,7 +1805,7 @@ export class QueueService {
   async processPendingJobs(): Promise<void> {
     const now = new Date();
     const allJobs = await storage.getJobs(undefined, { status: "pending" });
-    const pendingJobs = allJobs.filter(job => job.scheduledFor <= now);
+    const pendingJobs = allJobs.filter(job => job.scheduledFor && job.scheduledFor <= now);
 
     for (const job of pendingJobs) {
       try {
@@ -1847,7 +1847,7 @@ export class QueueService {
     });
 
     // Process immediately
-    await this.processJob(job.id);
+    await this.processJob(job);
     
     return job;
   }
@@ -2130,10 +2130,12 @@ export class QueueService {
    * Cancel automation jobs for a rule
    */
   async cancelAutomationJobs(ruleId: string): Promise<number> {
-    const jobs = await storage.getJobsByData({ ruleId });
+    // const jobs = await storage.getJobsByData({ ruleId });
+    const jobs = await storage.getJobs(undefined, { type: "automation" });
+    const filteredJobs = jobs.filter(job => (job.data as any)?.ruleId === ruleId);
     let cancelledCount = 0;
     
-    for (const job of jobs) {
+    for (const job of filteredJobs) {
       if (job.status === "pending" || job.status === "scheduled") {
         await storage.updateJob(job.id, {
           status: "cancelled",

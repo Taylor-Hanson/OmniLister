@@ -37,7 +37,7 @@ export class AutomationSafetyService {
   private lastActionTimes: Map<string, Date> = new Map();
   private consecutiveActionCounts: Map<string, number> = new Map();
 
-  // Default safety configurations per marketplace
+  // Default safety ruleConfigs per marketplace
   private readonly safetyConfigs: Record<string, MarketplaceSafetyConfig> = {
     poshmark: {
       marketplace: "poshmark",
@@ -180,7 +180,7 @@ export class AutomationSafetyService {
       return planCheck;
     }
 
-    // Check if rule configuration is safe
+    // Check if rule ruleConfig is safe
     const configCheck = this.validateRuleConfiguration(rule);
     if (!configCheck.allowed) {
       return configCheck;
@@ -210,11 +210,11 @@ export class AutomationSafetyService {
       };
     }
 
-    // Validate new configuration if provided
-    if (updates.configuration) {
+    // Validate new ruleConfig if provided
+    if (updates.ruleConfig) {
       const configCheck = this.validateRuleConfiguration({
         ...existingRule,
-        configuration: updates.configuration,
+        ruleConfig: updates.ruleConfig,
       });
       if (!configCheck.allowed) {
         return configCheck;
@@ -349,12 +349,12 @@ export class AutomationSafetyService {
   }
 
   /**
-   * Validate rule configuration
+   * Validate rule ruleConfig
    */
   private validateRuleConfiguration(
     rule: InsertAutomationRule | AutomationRule
   ): SafetyCheckResult {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     const safetyConfig = this.safetyConfigs[rule.marketplace];
 
     if (!safetyConfig) {
@@ -685,13 +685,13 @@ export class AutomationSafetyService {
    */
   resetUserCounters(userId: string): void {
     // Clear all counters for user
-    for (const [key] of this.userActionCounters) {
+    for (const [key] of Array.from(this.userActionCounters.entries())) {
       if (key.startsWith(userId)) {
         this.userActionCounters.delete(key);
       }
     }
     
-    for (const [key] of this.consecutiveActionCounts) {
+    for (const [key] of Array.from(this.consecutiveActionCounts.entries())) {
       if (key.startsWith(userId)) {
         this.consecutiveActionCounts.delete(key);
       }

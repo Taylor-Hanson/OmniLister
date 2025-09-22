@@ -47,7 +47,7 @@ app.use((req, res, next) => {
     await marketplaceRulesService.initializeDefaultRules();
     log("✓ Marketplace posting rules initialized");
   } catch (error) {
-    log("⚠ Failed to initialize marketplace rules:", error);
+    log("⚠ Failed to initialize marketplace rules:", error as string);
   }
 
   // Rate limiting system self-test
@@ -83,7 +83,7 @@ app.use((req, res, next) => {
     await automationSchedulerService.initialize();
     log("✓ Automation scheduler initialized and running");
   } catch (error) {
-    log("⚠ Failed to initialize automation scheduler:", error);
+    log("⚠ Failed to initialize automation scheduler:", error as string);
   }
 
   const server = await registerRoutes(app);

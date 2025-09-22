@@ -117,13 +117,13 @@ export class RateLimitAnalyticsService {
     const rateLimitHitEvents = events.filter(e => e.eventType === "rate_limit_rate_limit_hit");
 
     const totalRequests = requestEvents.length;
-    const successfulRequests = requestEvents.filter(e => e.metadata?.success === true).length;
-    const failedRequests = requestEvents.filter(e => e.metadata?.success === false).length;
+    const successfulRequests = requestEvents.filter(e => (e.metadata as any)?.success === true).length;
+    const failedRequests = requestEvents.filter(e => (e.metadata as any)?.success === false).length;
     const rateLimitHits = rateLimitHitEvents.length;
 
     // Calculate average delay from backoff events
     const backoffEvents = events.filter(e => e.eventType === "rate_limit_backoff");
-    const totalDelay = backoffEvents.reduce((sum, e) => sum + (e.metadata?.delay || 0), 0);
+    const totalDelay = backoffEvents.reduce((sum, e) => sum + ((e.metadata as any)?.delay || 0), 0);
     const averageDelay = backoffEvents.length > 0 ? totalDelay / backoffEvents.length : 0;
 
     // Get current rate limit status for utilization calculation
@@ -165,7 +165,7 @@ export class RateLimitAnalyticsService {
     const hourlyStats = new Map<string, { total: number; successful: number; totalResponseTime: number }>();
 
     requestEvents.forEach(event => {
-      const timestamp = new Date(event.createdAt);
+      const timestamp = new Date(event.createdAt || new Date());
       const hour = timestamp.getHours();
       const dayOfWeek = timestamp.getDay();
       const key = `${dayOfWeek}-${hour}`;
@@ -177,12 +177,12 @@ export class RateLimitAnalyticsService {
       const stats = hourlyStats.get(key)!;
       stats.total++;
       
-      if (event.metadata?.success) {
+      if ((event.metadata as any)?.success) {
         stats.successful++;
       }
       
-      if (event.metadata?.responseTime) {
-        stats.totalResponseTime += event.metadata.responseTime;
+      if ((event.metadata as any)?.responseTime) {
+        stats.totalResponseTime += (event.metadata as any).responseTime;
       }
     });
 
@@ -199,7 +199,7 @@ export class RateLimitAnalyticsService {
     // Calculate usage distribution by hour
     const hourlyUsage = new Array(24).fill(0);
     requestEvents.forEach(event => {
-      const hour = new Date(event.createdAt).getHours();
+      const hour = new Date(event.createdAt || new Date()).getHours();
       hourlyUsage[hour]++;
     });
 
@@ -292,9 +292,9 @@ export class RateLimitAnalyticsService {
       .slice(0, 50) // Last 50 events
       .map(event => ({
         marketplace: event.marketplace || "unknown",
-        timestamp: event.createdAt,
+        timestamp: event.createdAt || new Date(),
         action: event.eventType.replace("rate_limit_", ""),
-        success: event.metadata?.success || false,
+        success: (event.metadata as any)?.success || false,
         rateLimited: event.eventType === "rate_limit_rate_limit_hit",
       }));
 

@@ -40,7 +40,8 @@ interface AutomationActivity {
 
 export default function AutomationDashboard() {
   const { toast } = useToast();
-  const { isConnected, automationStatus } = useWebSocket();
+  const { isConnected } = useWebSocket();
+  const [automationStatus, setAutomationStatus] = useState<any>(null);
   const [masterEnabled, setMasterEnabled] = useState(true);
   const [selectedMarketplace, setSelectedMarketplace] = useState<string | null>(null);
 
@@ -65,8 +66,7 @@ export default function AutomationDashboard() {
   // Master switch mutation
   const masterSwitchMutation = useMutation({
     mutationFn: (enabled: boolean) => 
-      apiRequest('/api/automation/master', {
-        method: 'POST',
+      apiRequest('POST', '/api/automation/master', {
         body: JSON.stringify({ enabled })
       }),
     onSuccess: () => {

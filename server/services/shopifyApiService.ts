@@ -654,7 +654,7 @@ class ShopifyApiService {
     if (listing.variants && Array.isArray(listing.variants)) {
       product.variants = (listing.variants as any[]).map(v => ({
         price: v.price || listing.price.toString(),
-        sku: v.sku || listing.sku,
+        sku: v.sku || (listing as any).sku || "",
         inventory_quantity: v.inventory_quantity || listing.quantity,
         requires_shipping: listing.requiresShipping !== false,
         weight: listing.weight ? parseFloat(listing.weight.toString()) : 0,
@@ -667,7 +667,7 @@ class ShopifyApiService {
       // Create a default variant
       product.variants = [{
         price: listing.price.toString(),
-        sku: listing.sku || "",
+        sku: (listing as any).sku || "",
         inventory_quantity: listing.quantity || 0,
         requires_shipping: listing.requiresShipping !== false,
         weight: listing.weight ? parseFloat(listing.weight.toString()) : 0,
@@ -801,7 +801,7 @@ class ShopifyApiService {
       
       // Shipping & inventory
       requiresShipping: defaultVariant?.requires_shipping !== false,
-      weight: defaultVariant?.weight || defaultVariant?.grams ? (defaultVariant.grams / 1000) : null,
+      weight: defaultVariant?.weight || (defaultVariant?.grams ? (defaultVariant.grams / 1000) : null),
       weightUnit: defaultVariant?.weight_unit || "kg",
       inventoryPolicy: defaultVariant?.inventory_policy || "deny",
       inventoryManagement: defaultVariant?.inventory_management || null,

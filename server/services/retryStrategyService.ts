@@ -70,7 +70,7 @@ export class RetryStrategyService {
       responseHeaders: context.responseHeaders,
       requestData: context.requestData,
       marketplace: context.marketplace,
-      attempt: context.job.attempts,
+      attempt: context.job.attempts || 0,
     };
 
     const failureAnalysis = await failureCategorizationService.categorizeFailure(errorContext);
@@ -80,7 +80,7 @@ export class RetryStrategyService {
 
     // Check if we've exceeded max retries
     const effectiveMaxRetries = marketplaceConfig?.globalMaxRetries || failureAnalysis.maxRetries;
-    if (context.job.attempts >= effectiveMaxRetries) {
+    if ((context.job.attempts || 0) >= effectiveMaxRetries) {
       return {
         shouldRetry: false,
         delayMs: 0,
@@ -123,7 +123,7 @@ export class RetryStrategyService {
 
     // Calculate retry delay with exponential backoff and jitter
     const delayCalculation = await this.calculateRetryDelay(
-      context.job.attempts,
+      context.job.attempts || 0,
       failureAnalysis,
       marketplaceConfig,
       context.marketplace
@@ -135,7 +135,7 @@ export class RetryStrategyService {
     return {
       shouldRetry: true,
       delayMs: delayCalculation.actualDelayMs,
-      reason: `Retry attempt ${context.job.attempts + 1}/${effectiveMaxRetries} for ${failureAnalysis.category} failure`,
+      reason: `Retry attempt ${(context.job.attempts || 0) + 1}/${effectiveMaxRetries} for ${failureAnalysis.category} failure`,
       maxRetriesReached: false,
       requiresUserIntervention: failureAnalysis.requiresUserIntervention,
       useCircuitBreaker: failureAnalysis.circuitBreakerEnabled,
@@ -235,8 +235,8 @@ export class RetryStrategyService {
     const adjustmentFactor = marketplaceConfig?.adaptiveAdjustmentFactor || 1.5;
 
     // If success rate is below threshold, increase delays
-    if (metrics.successRate < successThreshold) {
-      return adjustmentFactor;
+    if (parseFloat(metrics.successRate.toString()) < parseFloat(successThreshold.toString())) {
+      return parseFloat(adjustmentFactor.toString());
     }
 
     // If success rate is very high, slightly decrease delays
@@ -284,7 +284,7 @@ export class RetryStrategyService {
     try {
       const retryHistory: InsertJobRetryHistory = {
         jobId: context.job.id,
-        attemptNumber: context.job.attempts + 1,
+        attemptNumber: (context.job.attempts || 0) + 1,
         failureCategory: failureAnalysis.category,
         errorType: failureAnalysis.errorType,
         errorMessage: context.error.message,
@@ -384,8 +384,8 @@ export class RetryStrategyService {
           { dayOfWeek: 0, startHour: 2, endHour: 4, timezone: "UTC" }, // Sunday 2-4 AM UTC
         ],
         adaptiveRetryEnabled: true,
-        adaptiveSuccessThreshold: 0.8,
-        adaptiveAdjustmentFactor: 1.8,
+        adaptiveSuccessThreshold: "0.8",
+        adaptiveAdjustmentFactor: "1.8",
         priority: 1,
         isActive: true,
         createdAt: new Date(),
@@ -416,8 +416,8 @@ export class RetryStrategyService {
         },
         maintenanceWindows: [],
         adaptiveRetryEnabled: true,
-        adaptiveSuccessThreshold: 0.75,
-        adaptiveAdjustmentFactor: 1.6,
+        adaptiveSuccessThreshold: "0.75",
+        adaptiveAdjustmentFactor: "1.6",
         priority: 1,
         isActive: true,
         createdAt: new Date(),
@@ -448,8 +448,8 @@ export class RetryStrategyService {
         },
         maintenanceWindows: [],
         adaptiveRetryEnabled: true,
-        adaptiveSuccessThreshold: 0.8,
-        adaptiveAdjustmentFactor: 1.4,
+        adaptiveSuccessThreshold: "0.8",
+        adaptiveAdjustmentFactor: "1.4",
         priority: 1,
         isActive: true,
         createdAt: new Date(),

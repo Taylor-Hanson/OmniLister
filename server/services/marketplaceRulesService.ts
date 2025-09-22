@@ -44,7 +44,7 @@ export class MarketplaceRulesService {
           back_to_school: { multiplier: 1.2, months: [8, 9] },
           spring_cleaning: { multiplier: 1.1, months: [3, 4, 5] },
         },
-        success_multiplier: 1.0,
+        success_multiplier: "1.0",
         isActive: true,
       },
       
@@ -79,7 +79,7 @@ export class MarketplaceRulesService {
           holiday_season: { multiplier: 1.3, months: [11, 12] },
           summer_fashion: { multiplier: 1.2, months: [5, 6, 7] },
         },
-        success_multiplier: 1.1,
+        success_multiplier: "1.1",
         isActive: true,
       },
       
@@ -111,7 +111,7 @@ export class MarketplaceRulesService {
           holiday_season: { multiplier: 1.25, months: [11, 12] },
           spring_cleaning: { multiplier: 1.15, months: [3, 4] },
         },
-        success_multiplier: 0.95,
+        success_multiplier: "0.95",
         isActive: true,
       },
       
@@ -144,7 +144,7 @@ export class MarketplaceRulesService {
           moving_season: { multiplier: 1.3, months: [5, 6, 7, 8] },
           holiday_season: { multiplier: 1.2, months: [11, 12] },
         },
-        success_multiplier: 0.9,
+        success_multiplier: "0.9",
         isActive: true,
       },
       
@@ -178,7 +178,7 @@ export class MarketplaceRulesService {
           back_to_school: { multiplier: 1.3, months: [8, 9] },
           holiday_party: { multiplier: 1.25, months: [11, 12] },
         },
-        success_multiplier: 1.05,
+        success_multiplier: "1.05",
         isActive: true,
       },
       
@@ -212,7 +212,7 @@ export class MarketplaceRulesService {
           back_to_school: { multiplier: 1.15, months: [8, 9] },
           holiday_season: { multiplier: 1.1, months: [11, 12] },
         },
-        success_multiplier: 0.92,
+        success_multiplier: "0.92",
         isActive: true,
       },
     ];
@@ -268,7 +268,7 @@ export class MarketplaceRulesService {
 
           // Update the marketplace rules
           await storage.updateMarketplacePostingRules(marketplace, {
-            success_multiplier: Number(newMultiplier.toFixed(2)),
+            success_multiplier: newMultiplier.toFixed(2),
             lastUpdated: new Date(),
           });
 

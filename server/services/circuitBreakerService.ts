@@ -481,7 +481,7 @@ export class CircuitBreakerService {
     if (circuitBreaker) {
       await this.updateCircuitBreaker(marketplace, {
         metadata: {
-          ...circuitBreaker.metadata,
+          ...(circuitBreaker.metadata || {}),
           forceOpened: true,
           forceOpenReason: reason || "Manually forced open",
           forceOpenAt: new Date().toISOString(),

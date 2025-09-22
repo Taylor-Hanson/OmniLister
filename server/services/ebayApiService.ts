@@ -137,10 +137,6 @@ export interface EbayAccountPolicies {
       };
     }>;
     immediatePay?: boolean;
-    categoryTypes?: Array<{
-      name: string;
-      defaultValue: boolean;
-    }>;
   }>;
   returnPolicies: Array<{
     returnPolicyId: string;
@@ -187,11 +183,11 @@ export class EbayApiService {
     const inventoryItem: EbayInventoryItem = {
       sku: listing.id, // Use our listing ID as SKU
       product: this.mapToProduct(listing),
-      condition: this.mapCondition(listing.condition, listing.conditionId),
-      conditionDescription: listing.conditionDescription,
+      condition: this.mapCondition(listing.condition || "", listing.conditionId || undefined),
+      conditionDescription: listing.conditionDescription || undefined,
       availability: {
         shipToLocationAvailability: {
-          quantity: listing.quantity || 1,
+          quantity: parseInt((listing.quantity || "1").toString()),
         },
       },
     };
@@ -210,10 +206,10 @@ export class EbayApiService {
   private mapToProduct(listing: Listing): EbayProduct {
     const product: EbayProduct = {
       title: listing.title,
-      description: listing.description,
-      subtitle: listing.subtitle,
-      brand: listing.brand,
-      mpn: listing.mpn,
+      description: listing.description || "",
+      subtitle: listing.subtitle || undefined,
+      brand: listing.brand || undefined,
+      mpn: listing.mpn || undefined,
       imageUrls: this.extractImageUrls(listing.images),
     };
 
@@ -239,12 +235,12 @@ export class EbayApiService {
     const offer: EbayOffer = {
       sku: listing.id,
       marketplaceId: "EBAY_US", // Default to US, could be configurable
-      format: this.mapListingFormat(listing.listingFormat),
+      format: this.mapListingFormat(listing.listingFormat || ""),
       availableQuantity: listing.quantity || 1,
       categoryId,
       includeCatalogProductDetails: true,
-      listingDescription: listing.listingDescription || listing.description,
-      listingDuration: this.mapListingDuration(listing.listingDuration),
+      listingDescription: listing.listingDescription || listing.description || "",
+      listingDuration: this.mapListingDuration(listing.listingDuration || ""),
       pricingSummary: this.mapPricingSummary(listing),
     };
 
@@ -416,7 +412,7 @@ export class EbayApiService {
 
     try {
       const imageArray = Array.isArray(images) ? images : JSON.parse(images);
-      return imageArray.filter(url => typeof url === 'string' && url.startsWith('http'));
+      return imageArray.filter((url: any) => typeof url === 'string' && url.startsWith('http'));
     } catch (error) {
       console.warn("Failed to parse listing images:", error);
       return [];

@@ -23,7 +23,7 @@ import { z } from "zod";
 import { 
   ShoppingBag, Users, DollarSign, Clock, Shield, Zap,
   AlertTriangle, Plus, Trash2, Save, RefreshCw, Target,
-  Calendar, MessageSquare, Gift, Heart, Star, TrendingUp
+  Calendar, MessageSquare, Gift, Heart, Star, TrendingUp, Info
 } from "lucide-react";
 
 // Form schemas for Poshmark settings
@@ -244,7 +244,7 @@ export default function PoshmarkAutomationSettings() {
     useFieldArray({ control: shareForm.control, name: "peakHours.timeRanges" });
 
   // Fetch existing settings
-  const { data: existingSettings } = useQuery({
+  const { data: existingSettings } = useQuery<Record<string, any>>({
     queryKey: ['/api/automation/poshmark/settings'],
   });
 

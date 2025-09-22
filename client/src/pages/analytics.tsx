@@ -32,10 +32,12 @@ import OptimizationDashboard from "@/components/OptimizationDashboard";
 const COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#14b8a6'];
 
 interface AnalyticsOverview {
-  totalRevenue: number;
-  totalProfit: number;
-  profitMargin: number;
-  conversionRate: number;
+  totalRevenue?: number;
+  totalProfit?: number;
+  profitMargin?: number;
+  conversionRate?: number;
+  soldListings?: number;
+  activeListings?: number;
   salesVelocity: {
     daily: number;
     weekly: number;
@@ -47,6 +49,7 @@ interface AnalyticsOverview {
     type: string;
     description: string;
     impact: number;
+    recommendation?: string;
   }>;
 }
 
@@ -58,6 +61,24 @@ interface RevenueData {
   }>;
   totalRevenue: number;
   growth: number;
+  timeSeries?: Array<{
+    date: string;
+    revenue: number;
+    sales: number;
+  }>;
+  byMarketplace?: Array<{
+    marketplace: string;
+    revenue: number;
+    sales: number;
+  }>;
+  byCategory?: Array<{
+    category: string;
+    revenue: number;
+    sales: number;
+  }>;
+  roi?: number;
+  totalProfit?: number;
+  totalFees?: number;
 }
 
 interface InventoryData {
@@ -69,19 +90,39 @@ interface InventoryData {
     count: number;
     value: number;
   }>;
+  agingReport?: {
+    fresh: number;
+    stale: number;
+    aged: number;
+    dead: number;
+  };
+  avgInventoryAge?: number;
+  turnoverByCategory?: Array<{
+    category: string;
+    turnover: number;
+  }>;
+  deadStock?: Array<{
+    id: string;
+    name: string;
+    age: number;
+  }>;
 }
 
 interface CompetitionData {
-  opportunities: Array<{
+  opportunities?: Array<{
     type: string;
     description: string;
     impact: number;
+    recommendation?: string;
   }>;
   categoryPerformance: Array<{
     category: string;
     revenue: number;
     marketShare: number;
   }>;
+  trendingCategories?: string[];
+  decliningCategories?: string[];
+  marketPosition?: string;
 }
 
 // Custom animated counter component
@@ -180,12 +221,12 @@ export default function Analytics() {
     enabled: !!user,
   });
 
-  const { data: marketplace, isLoading: loadingMarketplace } = useQuery({
+  const { data: marketplace, isLoading: loadingMarketplace } = useQuery<any>({
     queryKey: ['/api/analytics/marketplace', timeRange],
     enabled: !!user,
   });
 
-  const { data: forecast, isLoading: loadingForecast } = useQuery({
+  const { data: forecast, isLoading: loadingForecast } = useQuery<any>({
     queryKey: ['/api/analytics/forecast'],
     enabled: !!user,
   });
@@ -195,7 +236,7 @@ export default function Analytics() {
     enabled: !!user,
   });
 
-  const { data: pricing, isLoading: loadingPricing } = useQuery({
+  const { data: pricing, isLoading: loadingPricing } = useQuery<any>({
     queryKey: ['/api/analytics/pricing'],
     enabled: !!user,
   });
@@ -321,12 +362,12 @@ export default function Analytics() {
                     </AlertDescription>
                   </Alert>
                 )}
-                {competition?.opportunities?.length > 0 && (
+                {competition?.opportunities && competition.opportunities.length > 0 && (
                   <Alert className="border-green-500/20 bg-green-500/10">
                     <Target className="h-4 w-4 text-green-600" />
                     <AlertTitle>Opportunity Detected</AlertTitle>
                     <AlertDescription>
-                      {competition.opportunities[0].recommendation}
+                      {competition.opportunities[0]?.recommendation}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -361,7 +402,7 @@ export default function Analytics() {
                   />
                   <div className="flex items-center mt-2">
                     <span className="text-xs text-muted-foreground">
-                      {overview?.totalRevenue > 0 ? "-- vs last period (no prior data)" : "No sales yet"}
+                      {overview?.totalRevenue && overview.totalRevenue > 0 ? "-- vs last period (no prior data)" : "No sales yet"}
                     </span>
                   </div>
                 </>
@@ -392,7 +433,7 @@ export default function Analytics() {
                     decimals={2}
                   />
                   <div className="flex items-center mt-2">
-                    <Badge variant={overview?.profitMargin > 25 ? "default" : "secondary"}>
+                    <Badge variant={overview?.profitMargin && overview.profitMargin > 25 ? "default" : "secondary"}>
                       {overview?.profitMargin?.toFixed(1)}% margin
                     </Badge>
                   </div>
@@ -746,7 +787,7 @@ export default function Analytics() {
                 ) : (
                   <ScrollArea className="h-64">
                     <div className="space-y-4">
-                      {inventory?.deadStock?.length > 0 ? (
+                      {inventory?.deadStock && inventory.deadStock.length > 0 ? (
                         inventory.deadStock.map((item: any, index: number) => (
                           <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
                             <div className="flex-1">

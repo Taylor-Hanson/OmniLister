@@ -19,6 +19,9 @@ export interface MarketplaceClient {
 // Base client for marketplaces that don't have full implementation yet
 class BaseMarketplaceClient implements MarketplaceClient {
   protected marketplaceConfig: MarketplaceConfig;
+  protected clientId?: string;
+  protected clientSecret?: string;
+  protected baseUrl?: string;
 
   constructor(marketplaceId: string) {
     this.marketplaceConfig = marketplaces[marketplaceId];
@@ -304,7 +307,7 @@ class ShopifyClient extends BaseMarketplaceClient {
 }
 
 // Specific implementation for eBay
-class EbayClient extends BaseMarketplaceClient {
+class EbayClient extends (BaseMarketplaceClient as any) {
   private clientId: string;
   private clientSecret: string;
   private redirectUri: string;
@@ -320,6 +323,11 @@ class EbayClient extends BaseMarketplaceClient {
     this.baseUrl = this.sandboxMode
       ? "https://api.sandbox.ebay.com"
       : "https://api.ebay.com";
+    
+    // Initialize base class properties
+    this.clientId = this.clientId;
+    this.clientSecret = this.clientSecret;
+    this.baseUrl = this.baseUrl;
   }
 
   getAuthUrl(): string {
@@ -406,10 +414,10 @@ class EbayClient extends BaseMarketplaceClient {
 
       // Create InventoryItem
       const inventoryItem = ebayApiService.mapToInventoryItem(listing);
-      const inventoryResponse = await this.createInventoryItem(listing.id, inventoryItem, connection);
+      const inventoryResponse = await this.createInventoryItem(listing.id || "", inventoryItem, connection);
       
       // Create Offer
-      const categoryId = ebayApiService.mapCategoryToEbay(listing.category);
+      const categoryId = ebayApiService.mapCategoryToEbay(listing.category || "");
       const offer = ebayApiService.mapToOffer(listing, categoryId);
       const offerResponse = await this.createOffer(offer, connection);
       
@@ -448,12 +456,12 @@ class EbayClient extends BaseMarketplaceClient {
       // Update InventoryItem if product details changed
       if (this.hasInventoryItemChanges(listing)) {
         const inventoryItem = ebayApiService.mapToInventoryItem(listing as Listing);
-        await this.updateInventoryItem(sku, inventoryItem, connection);
+        await this.updateInventoryItem(sku || "", inventoryItem, connection);
       }
 
       // Update Offer if offer details changed
       if (this.hasOfferChanges(listing)) {
-        const categoryId = ebayApiService.mapCategoryToEbay(listing.category);
+        const categoryId = ebayApiService.mapCategoryToEbay(listing.category || "");
         const offer = ebayApiService.mapToOffer(listing as Listing, categoryId);
         await this.updateOffer(externalId, offer, connection);
       }
@@ -662,7 +670,7 @@ class MarketplaceService {
 
   constructor() {
     // Initialize specific clients
-    this.clients.set("ebay", new EbayClient());
+    this.clients.set("ebay", new EbayClient() as any);
     this.clients.set("shopify", new ShopifyClient());
     
     // Initialize base clients for all other marketplaces
@@ -766,7 +774,7 @@ class MarketplaceService {
 
   async postListingToMarketplace(listing: Listing, marketplace: string, connection: MarketplaceConnection): Promise<ListingPost> {
     try {
-      const result = await this.createListing(marketplace, listing, connection);
+      const result = await this.createListing(listing, marketplace, connection);
       
       return {
         id: `${Date.now()}`,
@@ -776,6 +784,7 @@ class MarketplaceService {
         externalUrl: result.url,
         status: "posted",
         errorMessage: null,
+        shopifyInventoryItemId: null,
         postingData: {
           title: listing.title,
           price: listing.price,
@@ -784,7 +793,6 @@ class MarketplaceService {
         postedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
-        userId: listing.userId,
       } as ListingPost;
     } catch (error: any) {
       return {
@@ -795,11 +803,11 @@ class MarketplaceService {
         externalUrl: null,
         status: "failed",
         errorMessage: error.message,
+        shopifyInventoryItemId: null,
         postingData: null,
         postedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-        userId: listing.userId,
       } as ListingPost;
     }
   }
@@ -823,11 +831,11 @@ class MarketplaceService {
             externalUrl: null,
             status: "failed",
             errorMessage: "Marketplace not connected",
+            shopifyInventoryItemId: null,
             postingData: null,
             postedAt: null,
             createdAt: new Date(),
             updatedAt: new Date(),
-            userId: listing.userId,
           } as ListingPost;
         }
         return this.postListingToMarketplace(listing, marketplace, connection);

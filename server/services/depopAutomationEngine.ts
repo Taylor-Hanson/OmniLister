@@ -187,7 +187,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     const maxBumpsPerDay = config.maxBumpsPerDay || 4;
     const bumpInterval = config.bumpIntervalHours || 6;
 
@@ -219,7 +219,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     let bumpedCount = 0;
 
     for (const listing of sortedListings) {
-      if (!listing.externalListingId) continue;
+      if (!(listing as any).externalId) continue;
 
       // Check bump history
       if (!this.canBump(listing.id, maxBumpsPerDay, bumpInterval)) {
@@ -228,13 +228,9 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
 
       try {
         // Apply rate limiting
-        const canProceed = await rateLimitService.consumeToken(
-          user.id,
-          "depop",
-          "auto_bump"
-        );
+        const rateLimitCheck = await rateLimitService.checkRateLimit("depop", user.id);
 
-        if (!canProceed) {
+        if (!rateLimitCheck.allowed) {
           console.log("[Depop] Rate limit reached for bumps");
           break;
         }
@@ -244,7 +240,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
 
         // Execute bump
         await this.apiClient.bumpListing(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
@@ -279,7 +275,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     const refreshIntervalDays = config.refreshIntervalDays || 7;
 
     const listings = await storage.getListings(user.id, {
@@ -290,7 +286,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     let refreshedCount = 0;
 
     for (const listing of listings) {
-      if (!listing.externalListingId) continue;
+      if (!(listing as any).externalId) continue;
 
       // Check if listing needs refresh
       const daysSinceUpdate = Math.floor(
@@ -304,13 +300,13 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
       try {
         // Get current insights
         const insights = await this.apiClient.getItemInsights(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
         // Get trending hashtags for the category
         const trendingHashtags = await this.apiClient.getTrendingHashtags(
-          listing.categoryId || "general",
+          listing.category || "general",
           connection.accessToken!
         );
 
@@ -320,7 +316,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
         // Update hashtags if enabled
         if (config.updateHashtags) {
           updates.hashtags = this.selectBestHashtags(
-            listing.description,
+            listing.description || "",
             trendingHashtags,
             config.maxHashtags || 5
           );
@@ -329,25 +325,21 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
         // Refresh description if enabled
         if (config.refreshDescription) {
           updates.description = this.refreshDescription(
-            listing.description,
+            listing.description || "",
             insights,
             updates.hashtags
           );
         }
 
         // Rotate photos if available and enabled
-        if (config.rotatePhotos && listing.images?.length > 1) {
+        if (config.rotatePhotos && Array.isArray(listing.images) && listing.images.length > 1) {
           updates.photos = this.rotatePhotos(listing.images);
         }
 
         // Apply rate limiting
-        const canProceed = await rateLimitService.consumeToken(
-          user.id,
-          "depop",
-          "auto_refresh"
-        );
+        const rateLimitCheck = await rateLimitService.checkRateLimit("depop", user.id);
 
-        if (!canProceed) {
+        if (!rateLimitCheck.allowed) {
           console.log("[Depop] Rate limit reached for refresh");
           break;
         }
@@ -357,7 +349,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
 
         // Update the listing
         await this.apiClient.updateListing(
-          listing.externalListingId,
+          (listing as any).externalId,
           updates,
           connection.accessToken!
         );
@@ -392,7 +384,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     const maxFollowsPerDay = config.maxFollowsPerDay || 30;
     const maxLikesPerDay = config.maxLikesPerDay || 50;
 
@@ -410,13 +402,9 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     for (const targetUser of targetUsers) {
       // Follow user if under limit
       if (dailyActivity.follows < maxFollowsPerDay && config.enableFollows) {
-        const canFollow = await rateLimitService.consumeToken(
-          user.id,
-          "depop",
-          "auto_follow"
-        );
+        const rateLimitCheck = await rateLimitService.checkRateLimit("depop", user.id);
 
-        if (canFollow) {
+        if (rateLimitCheck.allowed) {
           await this.addHumanDelay();
           await this.apiClient.followUser(targetUser.userId, connection.accessToken!);
           this.trackSocialActivity(user.id, "follow");
@@ -427,13 +415,9 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
       // Like their items if under limit
       if (dailyActivity.likes < maxLikesPerDay && config.enableLikes) {
         for (const itemId of targetUser.itemIds.slice(0, 3)) {
-          const canLike = await rateLimitService.consumeToken(
-            user.id,
-            "depop",
-            "auto_like"
-          );
+          const rateLimitCheck = await rateLimitService.checkRateLimit("depop", user.id);
 
-          if (canLike && dailyActivity.likes < maxLikesPerDay) {
+          if (rateLimitCheck.allowed && dailyActivity.likes < maxLikesPerDay) {
             await this.addHumanDelay();
             await this.apiClient.likeItem(itemId, connection.accessToken!);
             this.trackSocialActivity(user.id, "like");
@@ -457,7 +441,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     
     const listings = await storage.getListings(user.id, {
       marketplace: "depop",
@@ -465,30 +449,30 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     });
 
     for (const listing of listings) {
-      if (!listing.externalListingId) continue;
+      if (!(listing as any).externalId) continue;
 
       try {
         const trendingHashtags = await this.apiClient.getTrendingHashtags(
-          listing.categoryId || "general",
+          listing.category || "general",
           connection.accessToken!
         );
 
         const insights = await this.apiClient.getItemInsights(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
         // Only update if engagement is low
         if (insights.engagementRate < (config.minEngagementRate || 5)) {
           const newHashtags = this.optimizeHashtags(
-            listing.description,
+            listing.description || "",
             trendingHashtags,
             insights,
             config
           );
 
           await this.apiClient.updateListing(
-            listing.externalListingId,
+            (listing as any).externalId,
             { hashtags: newHashtags },
             connection.accessToken!
           );
@@ -513,7 +497,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     
     const listings = await storage.getListings(user.id, {
       marketplace: "depop",
@@ -521,19 +505,19 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     });
 
     for (const listing of listings) {
-      if (!listing.externalListingId) continue;
+      if (!(listing as any).externalId) continue;
 
       try {
         // Get similar items to analyze pricing
         const similarItems = await this.apiClient.searchSimilarItems(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
-        const priceAnalysis = this.analyzePricing(similarItems, listing.price);
+        const priceAnalysis = this.analyzePricing(similarItems, parseFloat(listing.price || "0"));
         
         if (priceAnalysis.suggestedPrice && 
-            Math.abs(priceAnalysis.suggestedPrice - listing.price) > listing.price * 0.05) {
+            Math.abs(priceAnalysis.suggestedPrice - parseFloat(listing.price || "0")) > parseFloat(listing.price || "0") * 0.05) {
           
           // Ensure price is within bounds
           let newPrice = priceAnalysis.suggestedPrice;
@@ -541,18 +525,18 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
             newPrice = Math.max(newPrice, config.minPrice);
           }
           if (config.maxDiscount) {
-            const minAllowedPrice = listing.price * (1 - config.maxDiscount / 100);
+            const minAllowedPrice = parseFloat(listing.price || "0") * (1 - config.maxDiscount / 100);
             newPrice = Math.max(newPrice, minAllowedPrice);
           }
 
           await this.apiClient.updateListing(
-            listing.externalListingId,
+            (listing as any).externalId,
             { price: newPrice },
             connection.accessToken!
           );
 
           await storage.updateListing(listing.id, {
-            price: newPrice,
+            price: newPrice.toString(),
             updatedAt: new Date(),
           });
 
@@ -573,7 +557,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
    * Validate rule configuration
    */
   async validateRule(rule: AutomationRule): Promise<boolean> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     
     switch (rule.ruleType) {
       case "auto_bump":
@@ -701,8 +685,8 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     // In production, fetch actual performance metrics
     // For now, sort by price and age
     return listings.sort((a, b) => {
-      const scoreA = a.price * (1 / (Math.log(this.getDaysOld(a) + 1) + 1));
-      const scoreB = b.price * (1 / (Math.log(this.getDaysOld(b) + 1) + 1));
+      const scoreA = parseFloat(a.price || "0") * (1 / (Math.log(this.getDaysOld(a) + 1) + 1));
+      const scoreB = parseFloat(b.price || "0") * (1 / (Math.log(this.getDaysOld(b) + 1) + 1));
       return scoreB - scoreA;
     });
   }
@@ -720,7 +704,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
     const existing = description.match(/#\w+/g) || [];
     
     // Combine with trending, prioritize trending
-    const combined = [...new Set([...trending.slice(0, 3), ...existing])];
+    const combined = Array.from(new Set([...trending.slice(0, 3), ...existing]));
     
     return combined.slice(0, maxCount);
   }
@@ -812,7 +796,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
       hashtags.push("#trending");
     }
     
-    return [...new Set(hashtags)].slice(0, config.maxHashtags || 5);
+    return Array.from(new Set(hashtags)).slice(0, config.maxHashtags || 5);
   }
 
   private getCurrentSeason(): string {
@@ -865,11 +849,12 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
   private async logAction(userId: string, ruleId: string, action: string, details: any): Promise<void> {
     await storage.createAutomationLog({
       userId,
+      marketplace: "depop",
       ruleId,
-      action,
+      actionType: action,
       status: "success",
-      details,
-      executedAt: new Date(),
+      // details, // Not in schema
+      // executedAt: new Date(), // Not in schema
     });
   }
 }

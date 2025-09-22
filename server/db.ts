@@ -46,7 +46,7 @@ async function initializeDatabase() {
     
     const DATABASE_URL = process.env.DATABASE_URL;
     
-    console.log(`🗄️  Connecting to Neon database: ${DATABASE_URL.replace(/\/\/.*@/, '//***:***@')}`);
+    console.log(`🗄️  Connecting to Neon database: ${DATABASE_URL?.replace(/\/\/.*@/, '//***:***@')}`);
     
     try {
       pool = new Pool({ connectionString: DATABASE_URL });
@@ -60,6 +60,8 @@ async function initializeDatabase() {
 }
 
 // Initialize database immediately
-await initializeDatabase();
+(async () => {
+  await initializeDatabase();
+})();
 
 export { pool, db };

@@ -160,7 +160,7 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     
     // Get active listings
     const listings = await storage.getListings(user.id, {
@@ -172,12 +172,12 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
     let failedCount = 0;
 
     for (const listing of listings) {
-      if (!listing.externalListingId) continue;
+      if (!(listing as any).externalId) continue;
 
       try {
         // Get likers for this item
         const likers = await this.apiClient.getLikers(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
@@ -186,13 +186,9 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
 
         for (const likerId of eligibleLikers) {
           // Apply rate limiting
-          const canProceed = await rateLimitService.consumeToken(
-            user.id,
-            "mercari",
-            "auto_offer"
-          );
+          const rateLimitCheck = await rateLimitService.checkRateLimit("mercari", user.id);
 
-          if (!canProceed) {
+          if (!rateLimitCheck.allowed) {
             console.log("[Mercari] Rate limit reached for offers");
             break;
           }
@@ -205,7 +201,7 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
 
           // Send the offer
           await this.apiClient.sendOffer(
-            listing.externalListingId,
+            (listing as any).externalId,
             {
               targetUserId: likerId,
               discountPercentage: offer.discountPercentage,
@@ -243,7 +239,7 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     const staleThresholdDays = config.staleThresholdDays || 30;
     const priceDropPercentage = config.priceDropPercentage || 0;
 
@@ -256,25 +252,21 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
     let relistedCount = 0;
 
     for (const listing of listings) {
-      if (!listing.externalListingId) continue;
+      if (!(listing as any).externalId) continue;
 
       try {
         // Get activity metrics
         const activity = await this.apiClient.getItemActivity(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
         // Check if listing is stale
         if (this.isListingStale(activity, staleThresholdDays)) {
           // Apply rate limiting
-          const canProceed = await rateLimitService.consumeToken(
-            user.id,
-            "mercari",
-            "auto_relist"
-          );
+          const rateLimitCheck = await rateLimitService.checkRateLimit("mercari", user.id);
 
-          if (!canProceed) {
+          if (!rateLimitCheck.allowed) {
             console.log("[Mercari] Rate limit reached for relisting");
             break;
           }
@@ -287,14 +279,13 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
 
           // Relist the item
           const newExternalId = await this.apiClient.relistItem(
-            listing.externalListingId,
+            (listing as any).externalId,
             updates,
             connection.accessToken!
           );
 
           // Update the listing in our database
           await storage.updateListing(listing.id, {
-            externalListingId: newExternalId,
             price: updates.price || listing.price,
             updatedAt: new Date(),
           });
@@ -304,9 +295,9 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
           // Log the action
           await this.logAction(user.id, rule.id, "item_relisted", {
             listingId: listing.id,
-            oldExternalId: listing.externalListingId,
+            oldExternalId: (listing as any).externalId,
             newExternalId,
-            priceChange: updates.price ? listing.price - updates.price : 0,
+            priceChange: updates.price ? parseFloat(listing.price || "0") - parseFloat(updates.price) : 0,
           });
         }
       } catch (error) {
@@ -325,7 +316,7 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     
     const listings = await storage.getListings(user.id, {
       marketplace: "mercari",
@@ -333,28 +324,28 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
     });
 
     for (const listing of listings) {
-      if (!listing.externalListingId || !listing.categoryId) continue;
+      if (!(listing as any).externalId || !listing.category) continue;
 
       try {
         // Get market trends
         const trends = await this.apiClient.getMarketTrends(
-          listing.categoryId,
+          listing.category,
           connection.accessToken!
         );
 
         // Determine if price adjustment is needed
         const suggestedPrice = this.calculateSmartPrice(listing, trends, config);
         
-        if (Math.abs(suggestedPrice - listing.price) > listing.price * 0.05) {
+        if (Math.abs(suggestedPrice - parseFloat(listing.price || "0")) > parseFloat(listing.price || "0") * 0.05) {
           // Price difference is more than 5%, update it
           await this.apiClient.updateListing(
-            listing.externalListingId,
+            (listing as any).externalId,
             { price: suggestedPrice },
             connection.accessToken!
           );
 
           await storage.updateListing(listing.id, {
-            price: suggestedPrice,
+            price: suggestedPrice.toString(),
             updatedAt: new Date(),
           });
 
@@ -379,7 +370,7 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     
     // Get users who have liked multiple items
     const bundleCandidates = await this.findBundleCandidates(user.id, connection);
@@ -404,7 +395,7 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     
     const listings = await storage.getListings(user.id, {
       marketplace: "mercari",
@@ -412,27 +403,23 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
     });
 
     for (const listing of listings) {
-      if (!listing.externalListingId) continue;
+      if (!(listing as any).externalId) continue;
 
       try {
         const watchers = await this.apiClient.getWatchers(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
         for (const watcherId of watchers) {
-          const canProceed = await rateLimitService.consumeToken(
-            user.id,
-            "mercari",
-            "auto_offer"
-          );
+          const rateLimitCheck = await rateLimitService.checkRateLimit("mercari", user.id);
 
-          if (!canProceed) break;
+          if (!rateLimitCheck.allowed) break;
 
           await this.addHumanDelay();
 
           await this.apiClient.sendOffer(
-            listing.externalListingId,
+            (listing as any).externalId,
             {
               targetUserId: watcherId,
               discountPercentage: config.watcherDiscountPercentage || 5,
@@ -457,7 +444,7 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
    * Validate rule configuration
    */
   async validateRule(rule: AutomationRule): Promise<boolean> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     
     switch (rule.ruleType) {
       case "auto_offer":
@@ -565,11 +552,11 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
     };
 
     if (priceDropPercentage > 0) {
-      updates.price = listing.price * (1 - priceDropPercentage / 100);
+      updates.price = parseFloat(listing.price || "0") * (1 - priceDropPercentage / 100);
     }
 
     if (config.refreshDescription) {
-      updates.description = this.refreshDescription(listing.description);
+      updates.description = this.refreshDescription(listing.description || "");
     }
 
     return updates;
@@ -588,26 +575,26 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
   }
 
   private calculateSmartPrice(listing: Listing, trends: MarketTrends, config: any): number {
-    let suggestedPrice = listing.price;
+    let suggestedPrice = parseFloat(listing.price || "0");
 
     if (trends.suggestedPrice) {
       // Use market suggested price as baseline
-      suggestedPrice = trends.suggestedPrice;
+      suggestedPrice = parseFloat(trends.suggestedPrice.toString());
     }
 
     // Adjust based on demand level
     if (trends.demandLevel === "high") {
-      suggestedPrice = Math.min(suggestedPrice * 1.1, config.maxPrice || suggestedPrice * 1.2);
+      suggestedPrice = Math.min(suggestedPrice * 1.1, parseFloat((config.maxPrice || suggestedPrice * 1.2).toString()));
     } else if (trends.demandLevel === "low") {
-      suggestedPrice = Math.max(suggestedPrice * 0.9, config.minPrice || 5);
+      suggestedPrice = Math.max(suggestedPrice * 0.9, parseFloat((config.minPrice || 5).toString()));
     }
 
     // Ensure price is within configured bounds
     if (config.minPrice) {
-      suggestedPrice = Math.max(suggestedPrice, config.minPrice);
+      suggestedPrice = Math.max(suggestedPrice, parseFloat(config.minPrice.toString()));
     }
     if (config.maxPrice) {
-      suggestedPrice = Math.min(suggestedPrice, config.maxPrice);
+      suggestedPrice = Math.min(suggestedPrice, parseFloat(config.maxPrice.toString()));
     }
 
     return Math.round(suggestedPrice * 100) / 100; // Round to 2 decimal places
@@ -642,11 +629,12 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
   private async logAction(userId: string, ruleId: string, action: string, details: any): Promise<void> {
     await storage.createAutomationLog({
       userId,
+      marketplace: "mercari",
       ruleId,
-      action,
+      actionType: action,
       status: "success",
-      details,
-      executedAt: new Date(),
+      // details, // Not in schema
+      // executedAt: new Date(), // Not in schema
     });
   }
 }

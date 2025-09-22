@@ -35,12 +35,12 @@ export default function Dashboard() {
   });
 
   // Fetch optimization insights for dashboard
-  const { data: optimizationInsights } = useQuery({
+  const { data: optimizationInsights } = useQuery<any>({
     queryKey: ['/api/optimization/insights'],
     enabled: !!user,
   });
 
-  const { data: optimizationOpportunities } = useQuery({
+  const { data: optimizationOpportunities } = useQuery<any>({
     queryKey: ['/api/optimization/opportunities'],
     enabled: !!user,
   });

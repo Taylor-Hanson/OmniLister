@@ -30,7 +30,7 @@ export default function Marketplaces() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "popular" | MarketplaceCategory>("popular");
 
-  const { data: connections = [], isLoading } = useQuery({
+  const { data: connections = [], isLoading } = useQuery<any[]>({
     queryKey: ['/api/marketplaces'],
     enabled: !!user,
   });

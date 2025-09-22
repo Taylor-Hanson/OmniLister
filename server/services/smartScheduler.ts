@@ -109,7 +109,7 @@ export class SmartScheduler {
       this.getMarketplacePostingRules(requestedMarketplaces),
       this.getUserSuccessAnalytics(user.id, requestedMarketplaces),
       this.getRateLimitStatuses(requestedMarketplaces),
-      optimizationEngine.generateOptimizationInsights(user.id),
+      optimizationEngine.getOptimizationInsights(user.id),
       this.getOptimizedScheduleRecommendations(user.id, listing, requestedMarketplaces),
     ]);
     
@@ -185,7 +185,7 @@ export class SmartScheduler {
     // Apply smart distribution strategy with rate limit awareness
     const scheduledJobs = await this.distributeAcrossTimeSlots(
       optimalWindows,
-      rateLimitStatuses,
+      rateLimitStatuses as any,
       requestedTime,
       priority
     );
@@ -685,8 +685,8 @@ export class SmartScheduler {
         messages: engagementData?.messages || 0,
         sold: engagementData?.sold || false,
         daysToSell: engagementData?.daysToSell,
-        engagement_score: this.calculateEngagementScore(engagementData),
-        success_score: this.calculateSuccessScore(success, engagementData),
+        engagement_score: this.calculateEngagementScore(engagementData).toString(),
+        success_score: this.calculateSuccessScore(success, engagementData).toString(),
         timezone: "UTC", // In production, use user's timezone
       });
 
@@ -920,11 +920,7 @@ export class SmartScheduler {
       // Get schedule suggestions for this specific listing and marketplaces
       const scheduleRecommendations = await Promise.all(
         marketplaces.map(marketplace => 
-          recommendationService.generateScheduleSuggestions(userId, {
-            category: listing.category,
-            marketplace,
-            listingId: listing.id
-          })
+          recommendationService.getUserRecommendations(userId)
         )
       );
 

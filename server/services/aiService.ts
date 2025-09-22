@@ -86,7 +86,7 @@ export class AIService {
         max_tokens: 1000,
       });
 
-      const result = JSON.parse(response.choices[0].message.content);
+      const result = JSON.parse(response.choices[0].message.content || "{}");
       return {
         title: result.title || "Product",
         description: result.description || "",
@@ -147,7 +147,7 @@ export class AIService {
         max_tokens: 800,
       });
 
-      const result = JSON.parse(response.choices[0].message.content);
+      const result = JSON.parse(response.choices[0].message.content || "{}");
       return {
         optimizedTitle: result.optimizedTitle || title,
         optimizedDescription: result.optimizedDescription || description,
@@ -192,7 +192,7 @@ export class AIService {
         max_tokens: 500,
       });
 
-      const result = JSON.parse(response.choices[0].message.content);
+      const result = JSON.parse(response.choices[0].message.content || "{}");
       return {
         title: result.title,
         description: result.description,

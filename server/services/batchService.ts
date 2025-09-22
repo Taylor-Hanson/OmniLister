@@ -142,7 +142,7 @@ export class BatchService {
         version: '1.0',
         features: ['smart_scheduling', 'rate_limiting', 'optimization']
       }
-    });
+    } as any);
 
     // Emit batch created
     if (global.broadcastToUser) {
@@ -303,7 +303,7 @@ export class BatchService {
     // Update batch with scheduling metadata
     await storage.updateBatch(batch.id, {
       batchMetadata: {
-        ...batch.batchMetadata,
+        ...(batch.batchMetadata || {}),
         distributionStrategy: strategy.strategy,
         optimizationApplied: true,
         rateLimitRespected: strategy.rateLimitAware,
@@ -344,7 +344,7 @@ export class BatchService {
     if ((totalItems || 0) <= 50) {
       return {
         strategy: 'optimal_timing',
-        maxItemsPerBatch: totalItems,
+        maxItemsPerBatch: totalItems || 0,
         preferredTimeSlots: await this.getOptimalTimeSlots(user, marketplaces),
         marketplaceGroups: [marketplaces],
         rateLimitAware: true
@@ -356,7 +356,7 @@ export class BatchService {
       return {
         strategy: 'load_balancing',
         maxItemsPerBatch: 25,
-        preferredTimeSlots: await this.getDistributedTimeSlots(user, marketplaces, totalItems),
+        preferredTimeSlots: await this.getDistributedTimeSlots(user, marketplaces, totalItems || 0),
         marketplaceGroups: this.createMarketplaceGroups(marketplaces, rateLimitStatuses),
         rateLimitAware: true
       };
@@ -411,7 +411,7 @@ export class BatchService {
           scheduledFor: timeSlot,
           marketplaces: marketplaceGroup,
           itemMetadata: {
-            ...item.itemMetadata,
+            ...(item.itemMetadata || {}),
             distributionGroup: groupIndex,
             schedulingStrategy: strategy.strategy,
             assignedTimeSlot: timeSlot.toISOString()
@@ -646,7 +646,7 @@ export class BatchService {
     const result: BatchProcessingResult = {
       batchId: batch.id,
       status: 'completed',
-      totalItems: batch.totalItems,
+      totalItems: batch.totalItems || 0,
       successfulItems: 0,
       failedItems: 0,
       skippedItems: 0,
@@ -741,11 +741,11 @@ export class BatchService {
         failedItems: result.failedItems,
         avgProcessingTime: Math.round(result.analytics.avgProcessingTime / 1000), // Convert to seconds
         totalProcessingTime: Math.round(result.processingTime / 1000),
-        successRate: result.analytics.successRate,
-        costEfficiency: result.analytics.costEfficiency,
+        successRate: result.analytics.successRate.toString(),
+        costEfficiency: result.analytics.costEfficiency.toString(),
         optimizationScore: 85, // TODO: Calculate based on actual performance
         errorBreakdown: this.categorizeErrors(result.errors)
-      });
+      } as any);
 
       // Remove from queue
       await storage.deleteBatchQueueEntry(queueEntry.batchId);
@@ -858,7 +858,7 @@ export class BatchService {
     });
 
     // Process the job immediately through queue service
-    await queueService.processJob(job.id);
+    await queueService.processJob(job);
   }
 
   /**
@@ -893,7 +893,7 @@ export class BatchService {
     });
 
     // Process the job immediately through queue service
-    await queueService.processJob(job.id);
+    await queueService.processJob(job);
   }
 
   /**
@@ -933,7 +933,7 @@ export class BatchService {
       });
 
       // Process the sync job
-      await queueService.processJob(job.id);
+      await queueService.processJob(job);
     } else {
       await storage.updateBatchItem(item.id, {
         processedData: {
@@ -954,19 +954,19 @@ export class BatchService {
 
     // Create new listing from item data
     const listing = await storage.createListing(batch.userId, {
-      title: item.itemData.title,
-      description: item.itemData.description,
-      price: item.itemData.price,
-      condition: item.itemData.condition,
-      category: item.itemData.category,
-      brand: item.itemData.brand,
-      size: item.itemData.size,
-      color: item.itemData.color,
-      material: item.itemData.material,
-      quantity: item.itemData.quantity || 1,
-      images: item.itemData.images || [],
-      status: 'draft'
-    });
+      title: (item.itemData as any).title,
+      description: (item.itemData as any).description,
+      price: (item.itemData as any).price,
+      condition: (item.itemData as any).condition,
+      category: (item.itemData as any).category,
+      brand: (item.itemData as any).brand,
+      size: (item.itemData as any).size,
+      color: (item.itemData as any).color,
+      material: (item.itemData as any).material,
+      quantity: (item.itemData as any).quantity || 1,
+      images: (item.itemData as any).images || [],
+      // status: 'draft' // Not in schema
+    } as any);
 
     // Update usage tracking
     await storage.incrementListingUsage(batch.userId);
@@ -982,7 +982,7 @@ export class BatchService {
     });
 
     // If auto-post is enabled, create posting job
-    if (batch.batchSettings?.autoPost && item.marketplaces && item.marketplaces.length > 0) {
+    if ((batch.batchSettings as any)?.autoPost && item.marketplaces && item.marketplaces.length > 0) {
       const job = await storage.createJob(batch.userId, {
         type: 'post-listing',
         data: {
@@ -998,14 +998,14 @@ export class BatchService {
       await storage.updateBatchItem(item.id, {
         jobId: job.id,
         processedData: {
-          ...item.processedData,
+          ...(item.processedData || {}),
           jobCreated: true,
           jobId: job.id
         }
       });
 
       // Process the posting job
-      await queueService.processJob(job.id);
+      await queueService.processJob(job);
     }
   }
 

@@ -23,18 +23,18 @@ export default function BulkManager() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const { data: listings = [], isLoading: listingsLoading } = useQuery({
+  const { data: listings = [], isLoading: listingsLoading } = useQuery<any[]>({
     queryKey: ['/api/listings'],
     enabled: !!user,
   });
 
-  const { data: jobs = [], isLoading: jobsLoading } = useQuery({
+  const { data: jobs = [], isLoading: jobsLoading } = useQuery<any[]>({
     queryKey: ['/api/jobs'],
     enabled: !!user,
     refetchInterval: 5000, // Refresh every 5 seconds for real-time updates
   });
 
-  const { data: marketplaces = [] } = useQuery({
+  const { data: marketplaces = [] } = useQuery<any[]>({
     queryKey: ['/api/marketplaces'],
     enabled: !!user,
   });

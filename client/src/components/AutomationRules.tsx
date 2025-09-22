@@ -139,7 +139,7 @@ export default function AutomationRules() {
   });
 
   // Fetch existing rules
-  const { data: existingRules } = useQuery({
+  const { data: existingRules } = useQuery<Record<string, any>>({
     queryKey: ['/api/automation/rules'],
   });
 

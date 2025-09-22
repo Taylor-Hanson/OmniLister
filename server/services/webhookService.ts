@@ -337,7 +337,7 @@ export class WebhookService {
         userAgent: payload.userAgent || null,
         headers: payload.headers,
         priority: 5
-      });
+      } as any);
 
       if (!isSignatureValid) {
         await this.handleWebhookFailure(webhookEvent.id, 'Invalid webhook signature', {
@@ -605,13 +605,13 @@ export class WebhookService {
       if (existingMetrics.length > 0) {
         const metrics = existingMetrics[0];
         await storage.updateWebhookHealthMetrics(metrics.id, {
-          totalEvents: metrics.totalEvents + 1,
-          successfulEvents: success ? metrics.successfulEvents + 1 : metrics.successfulEvents,
-          failedEvents: success ? metrics.failedEvents : metrics.failedEvents + 1,
-          averageProcessingTime: ((parseFloat(metrics.averageProcessingTime.toString()) * metrics.totalEvents) + processingTime) / (metrics.totalEvents + 1),
-          maxProcessingTime: Math.max(metrics.maxProcessingTime, processingTime),
-          minProcessingTime: metrics.minProcessingTime === 0 ? processingTime : Math.min(metrics.minProcessingTime, processingTime),
-          healthScore: success ? Math.min(100, parseFloat(metrics.healthScore.toString()) + 1) : Math.max(0, parseFloat(metrics.healthScore.toString()) - 5)
+          totalEvents: (metrics.totalEvents || 0) + 1,
+          successfulEvents: success ? (metrics.successfulEvents || 0) + 1 : (metrics.successfulEvents || 0),
+          failedEvents: success ? (metrics.failedEvents || 0) : (metrics.failedEvents || 0) + 1,
+          averageProcessingTime: (((parseFloat((metrics.averageProcessingTime || 0).toString()) * (metrics.totalEvents || 0)) + processingTime) / ((metrics.totalEvents || 0) + 1)).toString(),
+          maxProcessingTime: Math.max(metrics.maxProcessingTime || 0, processingTime),
+          minProcessingTime: (metrics.minProcessingTime || 0) === 0 ? processingTime : Math.min(metrics.minProcessingTime || 0, processingTime),
+          healthScore: (success ? Math.min(100, parseFloat((metrics.healthScore || 100).toString()) + 1) : Math.max(0, parseFloat((metrics.healthScore || 100).toString()) - 5)).toString()
         });
       } else {
         // Create new metrics entry
@@ -621,10 +621,10 @@ export class WebhookService {
           totalEvents: 1,
           successfulEvents: success ? 1 : 0,
           failedEvents: success ? 0 : 1,
-          averageProcessingTime: processingTime,
+          averageProcessingTime: processingTime.toString(),
           maxProcessingTime: processingTime,
           minProcessingTime: processingTime,
-          healthScore: success ? 100 : 95
+          healthScore: (success ? 100 : 95).toString()
         });
       }
     } catch (error) {
@@ -652,7 +652,7 @@ export class WebhookService {
           events,
           url: webhookUrl
         }
-      });
+      } as any);
 
       console.log(`📝 Webhook registered for ${marketplace}:`, {
         configId: config.id,

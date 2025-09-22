@@ -22,13 +22,13 @@ export default function MarketplaceStatus() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: marketplaces = [], isLoading } = useQuery({
+  const { data: marketplaces = [], isLoading } = useQuery<any[]>({
     queryKey: ['/api/marketplaces'],
     enabled: !!user,
   });
 
   // Get actual listings to count per marketplace
-  const { data: listings = [] } = useQuery({
+  const { data: listings = [] } = useQuery<any[]>({
     queryKey: ['/api/listings'],
     enabled: !!user,
   });

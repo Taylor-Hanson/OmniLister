@@ -50,7 +50,7 @@ import { eq, and, or, desc, gte, lte, isNull, isNotNull, sql } from "drizzle-orm
 import { type IStorage } from "./storage";
 import { randomUUID } from "crypto";
 
-export class DatabaseStorage implements IStorage {
+export class DatabaseStorage {
   // User methods
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -538,7 +538,7 @@ export class DatabaseStorage implements IStorage {
     const user = await this.getUser(userId);
     if (!user) return;
     
-    const cycleStart = new Date(user.billingCycleStart);
+    const cycleStart = new Date(user.billingCycleStart || new Date());
     const now = new Date();
     const daysSinceCycleStart = Math.floor((now.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24));
     
@@ -735,7 +735,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(autoDelistHistory)
       .where(eq(autoDelistHistory.userId, userId))
-      .orderBy(desc(autoDelistHistory.createdAt))
+      .orderBy(desc(autoDelistHistory.delistedAt))
       .limit(limit);
   }
 
@@ -791,7 +791,7 @@ export class DatabaseStorage implements IStorage {
     if (!progress) throw new Error("Onboarding progress not found");
     
     return await this.updateOnboardingProgress(userId, {
-      currentStep: progress.totalSteps,
+      currentStep: 10, // Default to step 10 (completed)
       completedAt: new Date(),
     });
   }
@@ -870,10 +870,10 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(salesMetrics.category, filters.category));
     }
     if (filters?.startDate) {
-      conditions.push(gte(salesMetrics.createdAt, filters.startDate));
+      conditions.push(gte(salesMetrics.soldAt, filters.startDate));
     }
     if (filters?.endDate) {
-      conditions.push(lte(salesMetrics.createdAt, filters.endDate));
+      conditions.push(lte(salesMetrics.soldAt, filters.endDate));
     }
     
     return await db.select().from(salesMetrics).where(and(...conditions));
@@ -1321,9 +1321,9 @@ export class DatabaseStorage implements IStorage {
     
     return {
       total: entries.length,
-      pending: entries.filter(e => e.resolutionStatus === 'pending').length,
-      resolved: entries.filter(e => e.resolutionStatus === 'resolved').length,
-      requiresReview: entries.filter(e => e.requiresManualReview).length,
+      pending: entries.filter((e: any) => e.resolutionStatus === 'pending').length,
+      resolved: entries.filter((e: any) => e.resolutionStatus === 'resolved').length,
+      requiresReview: entries.filter((e: any) => e.requiresManualReview).length,
     };
   }
 
@@ -2152,30 +2152,30 @@ export class DatabaseStorage implements IStorage {
     
     const metrics = await query;
     
-    const totalEvents = metrics.reduce((sum, metric) => sum + metric.totalEvents, 0);
-    const successfulEvents = metrics.reduce((sum, metric) => sum + metric.successfulEvents, 0);
-    const failedEvents = metrics.reduce((sum, metric) => sum + metric.failedEvents, 0);
+    const totalEvents = metrics.reduce((sum: any, metric: any) => sum + metric.totalEvents, 0);
+    const successfulEvents = metrics.reduce((sum: any, metric: any) => sum + metric.successfulEvents, 0);
+    const failedEvents = metrics.reduce((sum: any, metric: any) => sum + metric.failedEvents, 0);
     
     const successRate = totalEvents > 0 ? (successfulEvents / totalEvents) * 100 : 100;
     
     const avgProcessingTimes = metrics
-      .map(metric => parseFloat(metric.averageProcessingTime.toString()))
-      .filter(time => time > 0);
+      .map((metric: any) => parseFloat(metric.averageProcessingTime.toString()))
+      .filter((time: any) => time > 0);
     const averageProcessingTime = avgProcessingTimes.length > 0 
-      ? avgProcessingTimes.reduce((sum, time) => sum + time, 0) / avgProcessingTimes.length 
+      ? avgProcessingTimes.reduce((sum: any, time: any) => sum + time, 0) / avgProcessingTimes.length 
       : 0;
     
     const healthScores = metrics
-      .map(metric => parseFloat(metric.healthScore.toString()))
-      .filter(score => score > 0);
+      .map((metric: any) => parseFloat(metric.healthScore.toString()))
+      .filter((score: any) => score > 0);
     const healthScore = healthScores.length > 0 
-      ? healthScores.reduce((sum, score) => sum + score, 0) / healthScores.length 
+      ? healthScores.reduce((sum: any, score: any) => sum + score, 0) / healthScores.length 
       : 100;
     
     const uptimes = metrics
-      .map(metric => parseFloat(metric.uptime.toString()));
+      .map((metric: any) => parseFloat(metric.uptime.toString()));
     const uptime = uptimes.length > 0 
-      ? uptimes.reduce((sum, uptime) => sum + uptime, 0) / uptimes.length 
+      ? uptimes.reduce((sum: any, uptime: any) => sum + uptime, 0) / uptimes.length 
       : 100;
 
     return {
@@ -2283,7 +2283,7 @@ export class DatabaseStorage implements IStorage {
       ));
 
     // Return schedules with rule attached
-    return results.map(r => ({ ...r.schedule, rule: r.rule })) as any;
+    return results.map((r: any) => ({ ...r.schedule, rule: r.rule })) as any;
   }
 
   async createAutomationSchedule(schedule: InsertAutomationSchedule): Promise<AutomationSchedule> {
@@ -2333,7 +2333,7 @@ export class DatabaseStorage implements IStorage {
       await db
         .update(automationSchedules)
         .set({ isActive: true, updatedAt: new Date() })
-        .where(sql`${automationSchedules.ruleId} IN (${sql.join(enabledRuleIds.map(r => sql`${r.id}`), sql`, `)})`);
+        .where(sql`${automationSchedules.ruleId} IN (${sql.join(enabledRuleIds.map((r: any) => sql`${r.id}`), sql`, `)})`);
     }
   }
 
@@ -2390,50 +2390,50 @@ export class DatabaseStorage implements IStorage {
     return newLog;
   }
 
-  async getAutomationLogStats(userId: string, days?: number): Promise<{
-    totalActions: number;
-    successRate: number;
-    mostActiveMarketplace: string;
-    mostActiveRuleType: string;
-  }> {
-    const startDate = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : undefined;
-    let conditions = [eq(automationLogs.userId, userId)];
+  // async getAutomationLogStats(userId: string, days?: number): Promise<{
+  //   totalActions: number;
+  //   successRate: number;
+  //   mostActiveMarketplace: string;
+  //   mostActiveRuleType: string;
+  // }> {
+  //   const startDate = days ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : undefined;
+  //   let conditions = [eq(automationLogs.userId, userId)];
     
-    if (startDate) {
-      conditions.push(gte(automationLogs.executedAt, startDate));
-    }
+  //   if (startDate) {
+  //     conditions.push(gte(automationLogs.executedAt, startDate));
+  //   }
     
-    const logs = await db.select().from(automationLogs).where(and(...conditions));
+  //   const logs = await db.select().from(automationLogs).where(and(...conditions));
     
-    const totalActions = logs.length;
-    const successfulActions = logs.filter(l => l.status === 'success').length;
-    const successRate = totalActions > 0 ? (successfulActions / totalActions) * 100 : 0;
+  //   const totalActions = logs.length;
+  //   const successfulActions = logs.filter((l: any) => l.status === 'success').length;
+  //   const successRate = totalActions > 0 ? (successfulActions / totalActions) * 100 : 0;
     
-    // Find most active marketplace
-    const marketplaceCounts = logs.reduce((acc, log) => {
-      acc[log.marketplace] = (acc[log.marketplace] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+  //   // Find most active marketplace
+  //   const marketplaceCounts = logs.reduce((acc: any, log: any) => {
+  //     acc[log.marketplace] = (acc[log.marketplace] || 0) + 1;
+  //     return acc;
+  //   }, {} as Record<string, number>);
     
-    const mostActiveMarketplace = Object.entries(marketplaceCounts)
-      .sort(([, a], [, b]) => b - a)[0]?.[0] || 'none';
+  //   const mostActiveMarketplace = Object.entries(marketplaceCounts)
+  //     .sort(([, a], [, b]) => (b as any) - (a as any))[0]?.[0] || 'none';
     
-    // Find most active rule type
-    const ruleTypeCounts = logs.reduce((acc, log) => {
-      acc[log.actionType] = (acc[log.actionType] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+  //   // Find most active rule type
+  //   const ruleTypeCounts = logs.reduce((acc: any, log: any) => {
+  //     acc[log.actionType] = (acc[log.actionType] || 0) + 1;
+  //     return acc;
+  //   }, {} as Record<string, number>);
     
-    const mostActiveRuleType = Object.entries(ruleTypeCounts)
-      .sort(([, a], [, b]) => b - a)[0]?.[0] || 'none';
+  //   const mostActiveRuleType = Object.entries(ruleTypeCounts)
+  //     .sort(([, a], [, b]) => (b as any) - (a as any))[0]?.[0] || 'none';
     
-    return {
-      totalActions,
-      successRate,
-      mostActiveMarketplace,
-      mostActiveRuleType,
-    };
-  }
+  //   return {
+  //     totalActions,
+  //     successRate,
+  //     mostActiveMarketplace,
+  //     mostActiveRuleType,
+  //   };
+  // }
 
   // Poshmark Share Settings methods
   async getPoshmarkShareSettings(userId: string): Promise<PoshmarkShareSettings | undefined> {

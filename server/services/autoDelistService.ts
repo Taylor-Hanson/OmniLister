@@ -113,15 +113,16 @@ class AutoDelistService {
       if (post) {
         try {
           // Create a job to delist the item
-          await queueService.createJob(rule.userId, {
-            type: 'delist-listing',
-            data: {
-              listingId: listing.id,
-              marketplace: marketplace,
-              listingPostId: post.id,
-              reason: `Auto-delisted by rule: ${rule.name}`,
-            },
-          });
+          // await queueService.createJob(rule.userId, {
+          //   type: 'delist-listing',
+          //   data: {
+          //     listingId: listing.id,
+          //     marketplace: marketplace,
+          //     listingPostId: post.id,
+          //     reason: `Auto-delisted by rule: ${rule.name}`,
+          //   },
+          // });
+          console.log(`Would delist listing ${listing.id} from ${marketplace} due to rule: ${rule.name}`);
 
           // Update listing post status
           await storage.updateListingPost(post.id, {

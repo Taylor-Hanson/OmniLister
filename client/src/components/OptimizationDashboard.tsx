@@ -518,7 +518,7 @@ export default function OptimizationDashboard() {
               <div>
                 <div className="text-2xl font-bold capitalize">{performanceTrend}</div>
                 <div className="text-sm text-muted-foreground">
-                  {trends?.changePercent > 0 ? '+' : ''}{trends?.changePercent || 0}%
+                  {trends?.changePercent && trends.changePercent > 0 ? '+' : ''}{trends?.changePercent || 0}%
                 </div>
               </div>
             </div>
@@ -679,7 +679,7 @@ export default function OptimizationDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">
-                  {insights?.marketplacePerformance?.reduce((acc: number, mp: any) => acc + mp.avgSuccessScore, 0) / (insights?.marketplacePerformance?.length || 1) || 0}
+                  {insights?.marketplacePerformance ? insights.marketplacePerformance.reduce((acc: number, mp: any) => acc + mp.avgSuccessScore, 0) / insights.marketplacePerformance.length : 0}
                 </div>
                 <p className="text-sm text-muted-foreference">Across all marketplaces</p>
               </CardContent>
@@ -691,7 +691,7 @@ export default function OptimizationDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold">
-                  {insights?.marketplacePerformance?.reduce((acc: number, mp: any) => acc + mp.conversionRate, 0) / (insights?.marketplacePerformance?.length || 1) || 0}%
+                  {insights?.marketplacePerformance ? insights.marketplacePerformance.reduce((acc: number, mp: any) => acc + mp.conversionRate, 0) / insights.marketplacePerformance.length : 0}%
                 </div>
                 <p className="text-sm text-muted-foreference">Conversion rate</p>
               </CardContent>

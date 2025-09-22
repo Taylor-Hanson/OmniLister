@@ -267,7 +267,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     const maxBumpsPerWeek = config.maxBumpsPerWeek || 7;
     const minDaysBetweenBumps = config.minDaysBetweenBumps || 1;
 
@@ -284,7 +284,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     const maxBumpsPerExecution = config.bumpsPerExecution || 3;
 
     for (const listing of prioritizedListings) {
-      if (!listing.externalListingId) continue;
+      if (!(listing as any).externalId) continue;
       if (bumpedCount >= maxBumpsPerExecution) break;
 
       // Check if eligible for bump
@@ -302,7 +302,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
       try {
         // Get current metrics
         const metrics = await this.apiClient.getItemMetrics(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
@@ -312,13 +312,9 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
         }
 
         // Apply rate limiting
-        const canProceed = await rateLimitService.consumeToken(
-          user.id,
-          "grailed",
-          "auto_bump"
-        );
+        const rateLimitCheck = await rateLimitService.checkRateLimit("grailed", user.id);
 
-        if (!canProceed) {
+        if (!rateLimitCheck.allowed) {
           console.log("[Grailed] Rate limit reached for bumps");
           break;
         }
@@ -328,7 +324,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
 
         // Execute bump
         await this.apiClient.bumpItem(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
@@ -359,7 +355,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     const minDaysBetweenDrops = config.minDaysBetweenDrops || 7;
     const maxTotalDropPercentage = config.maxTotalDropPercentage || 40;
 
@@ -369,12 +365,12 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     });
 
     for (const listing of listings) {
-      if (!listing.externalListingId) continue;
+      if (!(listing as any).externalId) continue;
 
       try {
         // Get item metrics
         const metrics = await this.apiClient.getItemMetrics(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
@@ -413,13 +409,9 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
 
         if (dropPercentage > 0) {
           // Apply rate limiting
-          const canProceed = await rateLimitService.consumeToken(
-            user.id,
-            "grailed",
-            "price_drop"
-          );
+          const rateLimitCheck = await rateLimitService.checkRateLimit("grailed", user.id);
 
-          if (!canProceed) {
+          if (!rateLimitCheck.allowed) {
             console.log("[Grailed] Rate limit reached for price drops");
             break;
           }
@@ -428,16 +420,16 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
 
           // Execute price drop
           await this.apiClient.dropPrice(
-            listing.externalListingId,
+            (listing as any).externalId,
             dropPercentage,
             connection.accessToken!
           );
 
-          const newPrice = listing.price * (1 - dropPercentage / 100);
+          const newPrice = parseFloat(listing.price || "0") * (1 - dropPercentage / 100);
           
           // Update local record
           await storage.updateListing(listing.id, {
-            price: newPrice,
+            price: newPrice.toString(),
             updatedAt: new Date(),
           });
 
@@ -467,7 +459,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     
     const listings = await storage.getListings(user.id, {
       marketplace: "grailed",
@@ -475,19 +467,19 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     });
 
     for (const listing of listings) {
-      if (!listing.externalListingId || !listing.brand) continue;
+      if (!(listing as any).externalId || !listing.brand) continue;
 
       try {
         // Get market analysis for the brand/category
         const marketAnalysis = await this.apiClient.getMarketAnalysis(
           listing.brand,
-          listing.categoryId || "general",
+          listing.category || "general",
           connection.accessToken!
         );
 
         // Get similar sold listings
         const similarListings = await this.apiClient.getSimilarListings(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
@@ -500,18 +492,18 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
         );
 
         // Only update if price difference is significant (>5%)
-        if (Math.abs(optimalPrice - listing.price) > listing.price * 0.05) {
+        if (Math.abs(optimalPrice - parseFloat(listing.price || "0")) > parseFloat(listing.price || "0") * 0.05) {
           // Ensure price respects minimum
-          const finalPrice = Math.max(optimalPrice, config.minPrice || listing.price * 0.5);
+          const finalPrice = Math.max(optimalPrice, config.minPrice || parseFloat(listing.price || "0") * 0.5);
 
           await this.apiClient.updateListing(
-            listing.externalListingId,
+            (listing as any).externalId,
             { price: finalPrice },
             connection.accessToken!
           );
 
           await storage.updateListing(listing.id, {
-            price: finalPrice,
+            price: finalPrice.toString(),
             updatedAt: new Date(),
           });
 
@@ -537,7 +529,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     const minWatchDays = config.minWatchDays || 3;
     const offerDiscountPercentage = config.offerDiscountPercentage || 10;
 
@@ -547,12 +539,12 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     });
 
     for (const listing of listings) {
-      if (!listing.externalListingId) continue;
+      if (!(listing as any).externalId) continue;
 
       try {
         // Get watchers
         const watchers = await this.apiClient.getWatchers(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
@@ -566,13 +558,11 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
 
         for (const watcher of eligibleWatchers) {
           // Apply rate limiting
-          const canProceed = await rateLimitService.consumeToken(
-            user.id,
-            "grailed",
-            "watcher_offer"
-          );
+          await rateLimitService.recordRequest("grailed", true);
 
-          if (!canProceed) {
+          // Check rate limit status
+          const rateLimitCheck = await rateLimitService.checkRateLimit("grailed", user.id);
+          if (!rateLimitCheck.allowed) {
             console.log("[Grailed] Rate limit reached for watcher offers");
             break;
           }
@@ -580,11 +570,11 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
           await this.addLuxuryDelay();
 
           // Calculate offer price
-          const offerPrice = listing.price * (1 - offerDiscountPercentage / 100);
+          const offerPrice = parseFloat(listing.price || "0") * (1 - offerDiscountPercentage / 100);
           
           // Send offer
           await this.apiClient.sendOfferToWatcher(
-            listing.externalListingId,
+            (listing as any).externalId,
             watcher.userId,
             {
               price: offerPrice,
@@ -614,7 +604,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     user: User,
     connection: MarketplaceConnection
   ): Promise<void> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     
     const listings = await storage.getListings(user.id, {
       marketplace: "grailed",
@@ -622,18 +612,18 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     });
 
     for (const listing of listings) {
-      if (!listing.externalListingId) continue;
+      if (!(listing as any).externalId) continue;
 
       try {
         // Get current feed position
         const feedPosition = await this.apiClient.getFeedPosition(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
         // Get item metrics
         const metrics = await this.apiClient.getItemMetrics(
-          listing.externalListingId,
+          (listing as any).externalId,
           connection.accessToken!
         );
 
@@ -642,31 +632,31 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
           const updates: GrailedListingUpdate = {};
 
           // Update measurements if missing (important for Grailed)
-          if (config.addMeasurements && !listing.measurements) {
-            updates.measurements = this.generateStandardMeasurements(listing.categoryId);
+          if (config.addMeasurements && !(listing as any).measurements) {
+            updates.measurements = this.generateStandardMeasurements(listing.category || "");
           }
 
           // Enhance description with keywords
           if (config.optimizeDescription) {
             updates.description = this.optimizeDescription(
-              listing.description,
-              listing.brand,
-              listing.categoryId
+              listing.description || "",
+              listing.brand || "",
+              listing.category || ""
             );
           }
 
           // Add relevant tags
           if (config.optimizeTags) {
             updates.tags = this.generateOptimalTags(
-              listing.brand,
-              listing.categoryId,
-              listing.condition
+              listing.brand || "",
+              listing.category || "",
+              listing.condition || ""
             );
           }
 
           if (Object.keys(updates).length > 0) {
             await this.apiClient.updateListing(
-              listing.externalListingId,
+              (listing as any).externalId,
               updates,
               connection.accessToken!
             );
@@ -688,7 +678,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
    * Validate rule configuration
    */
   async validateRule(rule: AutomationRule): Promise<boolean> {
-    const config = rule.configuration as any;
+    const config = rule.ruleConfig as any;
     
     switch (rule.ruleType) {
       case "auto_bump":
@@ -786,7 +776,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
 
   private calculateBumpPriority(listing: Listing): number {
     // Higher price items get priority
-    const priceScore = Math.log(listing.price + 1) * 10;
+    const priceScore = Math.log(parseFloat(listing.price || "0") + 1) * 10;
     
     // Newer items get slight priority
     const ageInDays = Math.floor((Date.now() - (listing.createdAt || new Date()).getTime()) / (1000 * 60 * 60 * 24));
@@ -917,9 +907,9 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     dropPercentage = Math.min(dropPercentage, remainingDrop);
     
     // Ensure minimum price is respected
-    const newPrice = listing.price * (1 - dropPercentage / 100);
+    const newPrice = parseFloat(listing.price || "0") * (1 - dropPercentage / 100);
     if (config.minPrice && newPrice < config.minPrice) {
-      dropPercentage = ((listing.price - config.minPrice) / listing.price) * 100;
+      dropPercentage = ((parseFloat(listing.price || "0") - config.minPrice) / parseFloat(listing.price || "0")) * 100;
     }
     
     return Math.max(0, Math.round(dropPercentage));
@@ -985,7 +975,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     return Math.round(suggestedPrice);
   }
 
-  private generateStandardMeasurements(categoryId?: string): Record<string, string> {
+  private generateStandardMeasurements(category?: string): Record<string, string> {
     // Generate standard measurements based on category
     const measurements: Record<string, string> = {
       "pit-to-pit": "21 inches",
@@ -994,7 +984,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
       "sleeve": "25 inches",
     };
     
-    if (categoryId === "bottoms") {
+    if (category === "bottoms") {
       return {
         "waist": "32 inches",
         "inseam": "32 inches",
@@ -1006,7 +996,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     return measurements;
   }
 
-  private optimizeDescription(description: string, brand?: string, categoryId?: string): string {
+  private optimizeDescription(description: string, brand?: string, category?: string): string {
     // Add keywords for better search visibility
     const keywords: string[] = [];
     
@@ -1014,8 +1004,8 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
       keywords.push(brand.toUpperCase());
     }
     
-    if (categoryId) {
-      keywords.push(categoryId);
+    if (category) {
+      keywords.push(category);
     }
     
     // Add condition and authenticity keywords
@@ -1033,7 +1023,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     return `${keywordString}\n\n${description}`;
   }
 
-  private generateOptimalTags(brand?: string, categoryId?: string, condition?: string): string[] {
+  private generateOptimalTags(brand?: string, category?: string, condition?: string): string[] {
     const tags: string[] = [];
     
     if (brand) {
@@ -1043,8 +1033,8 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
       tags.push(...relatedBrands);
     }
     
-    if (categoryId) {
-      tags.push(categoryId);
+    if (category) {
+      tags.push(category);
     }
     
     if (condition) {
@@ -1056,7 +1046,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     // Add style tags
     tags.push("archive", "vintage", "designer", "luxury");
     
-    return [...new Set(tags)].slice(0, 10);
+    return Array.from(new Set(tags)).slice(0, 10);
   }
 
   private getRelatedBrands(brand: string): string[] {
@@ -1081,11 +1071,12 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
   private async logAction(userId: string, ruleId: string, action: string, details: any): Promise<void> {
     await storage.createAutomationLog({
       userId,
+      marketplace: "grailed",
       ruleId,
-      action,
+      actionType: action,
       status: "success",
-      details,
-      executedAt: new Date(),
+      // details, // Not in schema
+      // executedAt: new Date(), // Not in schema
     });
   }
 }

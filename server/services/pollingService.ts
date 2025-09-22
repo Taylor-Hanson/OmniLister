@@ -127,7 +127,7 @@ export class PollingService {
           
           if (listing) {
             // Track the sale in analytics (this will trigger cross-platform sync)
-            const sale = await analyticsService.trackSale(
+            await analyticsService.trackSale(
               userId,
               listing,
               marketplace,
@@ -142,7 +142,16 @@ export class PollingService {
               }
             );
 
-            newSales.push(sale);
+            newSales.push({
+              id: `${Date.now()}`,
+              userId,
+              listing,
+              marketplace,
+              salePrice: saleData.salePrice,
+              fees: saleData.fees || 0,
+              soldAt: saleData.soldAt,
+              transactionId: saleData.transactionId
+            } as any);
             syncJobsTriggered++;
 
             console.log(`💰 Sale detected via polling:`, {
@@ -397,15 +406,16 @@ export class PollingService {
 
     const schedule = await storage.createPollingSchedule(userId, {
       marketplace,
+      userId,
       pollingInterval: options.interval || 300, // Default 5 minutes
       lastPollAt: null,
-      lastSaleCount: 0,
-      configurationData: {
-        adaptivePolling: options.adaptivePolling !== false,
-        minInterval: options.minInterval || 60,
-        maxInterval: options.maxInterval || 3600,
-        createdAt: new Date().toISOString()
-      }
+      // lastSaleCount: 0, // Not in schema
+      // configurationData: {
+      //   adaptivePolling: options.adaptivePolling !== false,
+      //   minInterval: options.minInterval || 60,
+      //   maxInterval: options.maxInterval || 3600,
+      //   createdAt: new Date().toISOString()
+      // } // Not in schema
     });
 
     console.log(`📅 Created polling schedule for ${marketplace}:`, {

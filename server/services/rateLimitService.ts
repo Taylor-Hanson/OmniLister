@@ -170,7 +170,7 @@ export class RateLimitService {
         };
       }
 
-      if (circuitBreakerState === "half-open") {
+      if (circuitBreakerState === "half_open") {
         // Allow limited requests during half-open state
         const halfOpenAllowed = await circuitBreakerService.canMakeHalfOpenRequest(marketplace);
         if (!halfOpenAllowed) {
@@ -489,7 +489,7 @@ export class RateLimitService {
     switch (circuitBreakerState) {
       case "open":
         return 5.0; // Heavy backoff
-      case "half-open":
+      case "half_open":
         return 2.0; // Moderate backoff
       default:
         return 1.0; // Normal operation

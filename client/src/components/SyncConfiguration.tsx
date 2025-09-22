@@ -51,19 +51,19 @@ export default function SyncConfiguration({ onClose }: SyncConfigurationProps) {
   });
 
   // Fetch sync settings
-  const { data: syncSettings, isLoading } = useQuery({
+  const { data: syncSettings, isLoading } = useQuery<any>({
     queryKey: ['/api/sync/settings'],
     enabled: !!user,
   });
 
   // Fetch sync rules
-  const { data: syncRules = [], refetch: refetchRules } = useQuery({
+  const { data: syncRules = [], refetch: refetchRules } = useQuery<any[]>({
     queryKey: ['/api/sync/rules'],
     enabled: !!user,
   });
 
   // Fetch marketplaces
-  const { data: marketplaces = [] } = useQuery({
+  const { data: marketplaces = [] } = useQuery<any[]>({
     queryKey: ['/api/marketplaces'],
     enabled: !!user,
   });

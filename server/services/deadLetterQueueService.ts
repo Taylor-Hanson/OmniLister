@@ -79,7 +79,7 @@ export class DeadLetterQueueService {
         marketplace: retry.marketplace || undefined,
         timestamp: retry.timestamp,
         retryDelay: retry.retryDelay || 0,
-      }));
+      } as any));
 
       // Determine if manual review is required
       const requiresManualReview = this.shouldRequireManualReview(finalFailureCategory, failureHistory);
@@ -87,9 +87,9 @@ export class DeadLetterQueueService {
       const dlqEntry: InsertDeadLetterQueue = {
         originalJobId: job.id,
         jobType: job.type,
-        jobData: job.data,
+        jobData: job.data as any,
         finalFailureCategory,
-        totalAttempts: job.attempts,
+        totalAttempts: job.attempts || 0,
         firstFailureAt: retryHistory[0]?.timestamp || new Date(),
         lastFailureAt: retryHistory[retryHistory.length - 1]?.timestamp || new Date(),
         failureHistory,
@@ -103,7 +103,7 @@ export class DeadLetterQueueService {
         userId: job.userId,
         ...dlqEntry,
         createdAt: new Date(),
-      };
+      } as any;
 
       console.warn(`Job ${job.id} moved to dead letter queue:`, {
         jobType: job.type,

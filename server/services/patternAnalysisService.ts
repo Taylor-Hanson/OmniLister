@@ -128,8 +128,8 @@ export class PatternAnalysisService {
     const startDate = subDays(new Date(), timeRange);
     const analytics = await storage.getPostingSuccessAnalytics(userId, {
       startDate,
-      marketplaces,
-      categories
+      marketplace: marketplaces?.[0], // Use first marketplace or undefined
+      category: categories?.[0] // Use first category or undefined
     });
 
     if (analytics.length < 10) {
@@ -923,7 +923,7 @@ export class PatternAnalysisService {
         .sort((a, b) => b.preference_score - a.preference_score);
       
       // Generate correlations
-      const correlations = await this.findCorrelations(analytics);
+      const correlations = await this.analyzeCorrelations(analytics);
       
       // Generate recommendations
       const recommendations = [
