@@ -1190,6 +1190,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Cross-posting endpoint
+  app.post("/api/jobs/cross-posting", requireAuth, async (req, res) => {
+    try {
+      const { listingId, marketplaces, settings = {} } = req.body;
+      
+      if (!listingId || !Array.isArray(marketplaces) || marketplaces.length === 0) {
+        return res.status(400).json({ error: "Listing ID and marketplaces array are required" });
+      }
+
+      const listing = await storage.getListing(listingId);
+      if (!listing || listing.userId !== req.user!.id) {
+        return res.status(404).json({ error: "Listing not found" });
+      }
+
+      // Verify all marketplaces are connected
+      const connections = await storage.getMarketplaceConnections(req.user!.id);
+      const connectedMarketplaces = connections.filter(c => c.isConnected).map(c => c.marketplace);
+      
+      const invalidMarketplaces = marketplaces.filter(mp => !connectedMarketplaces.includes(mp));
+      if (invalidMarketplaces.length > 0) {
+        return res.status(400).json({ 
+          error: `Not connected to: ${invalidMarketplaces.join(', ')}` 
+        });
+      }
+
+      // Create cross-posting job
+      const job = await queueService.createCrossPostingJob(
+        req.user!.id, 
+        listingId, 
+        marketplaces, 
+        settings
+      );
+
+      res.json(job);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Get cross-posting jobs
+  app.get("/api/jobs/cross-posting", requireAuth, async (req, res) => {
+    try {
+      const jobs = await storage.getUserJobs(req.user!.id, { type: "cross-posting" });
+      res.json(jobs);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/jobs/sync-inventory", requireAuth, async (req, res) => {
     try {
       const { listingId, soldMarketplace } = req.body;

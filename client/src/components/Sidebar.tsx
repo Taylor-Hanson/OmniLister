@@ -33,6 +33,12 @@ const navigationItems = [
     testId: "nav-create-listing"
   },
   {
+    href: "/cross-posting",
+    icon: "fas fa-share-alt",
+    label: "Cross-Posting",
+    testId: "nav-cross-posting"
+  },
+  {
     href: "/bulk-manager",
     icon: "fas fa-tasks",
     label: "Bulk Manager",

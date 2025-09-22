@@ -1432,6 +1432,121 @@ class CrossPlatformRelistProcessor implements JobProcessor {
   }
 }
 
+// Cross-Posting Processor
+class CrossPostingProcessor implements JobProcessor {
+  async process(job: Job): Promise<void> {
+    const { userId, listingId, marketplaces, settings = {} } = job.data as {
+      userId: string;
+      listingId: string;
+      marketplaces: string[];
+      settings: Record<string, any>;
+    };
+
+    const user = await storage.getUser(userId);
+    if (!user) {
+      throw new Error(`User ${userId} not found`);
+    }
+
+    const listing = await storage.getListing(listingId);
+    if (!listing) {
+      throw new Error(`Listing ${listingId} not found`);
+    }
+
+    // Get marketplace connections
+    const connections = await storage.getMarketplaceConnections(userId);
+    const connectionMap = new Map(connections.map(c => [c.marketplace, c]));
+
+    const results: any[] = [];
+    let completedCount = 0;
+    let failedCount = 0;
+
+    // Process each marketplace
+    for (const marketplace of marketplaces) {
+      const connection = connectionMap.get(marketplace);
+      if (!connection || !connection.isConnected) {
+        results.push({
+          marketplace,
+          status: 'failed',
+          error: 'Not connected to marketplace'
+        });
+        failedCount++;
+        continue;
+      }
+
+      try {
+        // Apply delay if specified
+        if (settings.delay && settings.delay > 0) {
+          await new Promise(resolve => setTimeout(resolve, settings.delay * 1000));
+        }
+
+        // Check rate limits
+        const rateLimitCheck = await rateLimitService.checkRateLimit(marketplace, userId);
+        if (!rateLimitCheck.allowed) {
+          results.push({
+            marketplace,
+            status: 'failed',
+            error: 'Rate limit exceeded'
+          });
+          failedCount++;
+          continue;
+        }
+
+        // Post to marketplace using marketplace service
+        const marketplaceService = new (await import('./marketplaceService')).MarketplaceService();
+        const postResult = await marketplaceService.postListingToMarketplace(listing, marketplace, connection);
+
+        results.push({
+          marketplace,
+          status: 'success',
+          externalId: postResult.externalId,
+          externalUrl: postResult.externalUrl
+        });
+        completedCount++;
+
+        // Update job progress
+        await storage.updateJob(job.id, {
+          progress: Math.round((completedCount + failedCount) / marketplaces.length * 100),
+          data: {
+            ...job.data,
+            completedMarketplaces: completedCount,
+            failedMarketplaces: failedCount,
+            results
+          }
+        });
+
+      } catch (error: any) {
+        console.error(`Failed to post to ${marketplace}:`, error);
+        results.push({
+          marketplace,
+          status: 'failed',
+          error: error.message
+        });
+        failedCount++;
+      }
+    }
+
+    // Determine final status
+    let finalStatus = 'completed';
+    if (failedCount === marketplaces.length) {
+      finalStatus = 'failed';
+    } else if (failedCount > 0) {
+      finalStatus = 'partial';
+    }
+
+    await storage.updateJob(job.id, {
+      status: finalStatus,
+      progress: 100,
+      result: {
+        totalMarketplaces: marketplaces.length,
+        successful: completedCount,
+        failed: failedCount,
+        results
+      },
+      completedAt: new Date(),
+    });
+  }
+}
+
 export class QueueService {
   private processors: Map<string, JobProcessor> = new Map([
     ["post-listing", new PostListingProcessor()],
@@ -1448,6 +1563,7 @@ export class QueueService {
     ["grailed_bump", new GrailedBumpProcessor()],
     ["grailed_price_drop", new GrailedPriceDropProcessor()],
     ["cross_platform_relist", new CrossPlatformRelistProcessor()],
+    ["cross-posting", new CrossPostingProcessor()],
   ]);
 
   async processJob(job: Job): Promise<void> {
@@ -1698,6 +1814,42 @@ export class QueueService {
         console.error(`Failed to process job ${job.id}:`, error);
       }
     }
+  }
+
+  /**
+   * Create cross-posting job for multiple marketplaces
+   */
+  async createCrossPostingJob(
+    userId: string, 
+    listingId: string, 
+    marketplaces: string[], 
+    settings: Record<string, any> = {}
+  ): Promise<Job> {
+    const job = await storage.createJob(userId, {
+      type: "cross-posting",
+      data: {
+        listingId,
+        marketplaces,
+        settings,
+        totalMarketplaces: marketplaces.length,
+        completedMarketplaces: 0,
+        failedMarketplaces: 0,
+        results: marketplaces.map(mp => ({
+          marketplace: mp,
+          status: 'pending',
+          externalId: null,
+          externalUrl: null,
+          error: null
+        }))
+      },
+      priority: 5, // High priority for cross-posting
+      scheduledFor: new Date(),
+    });
+
+    // Process immediately
+    await this.processJob(job.id);
+    
+    return job;
   }
 
   /**

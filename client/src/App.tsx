@@ -11,6 +11,7 @@ import Login from "@/pages/login";
 import Signup from "@/pages/signup";
 import Dashboard from "@/pages/dashboard";
 import CreateListing from "@/pages/create-listing";
+import CrossPostingManager from "@/components/CrossPostingManager";
 import BulkManager from "@/pages/bulk-manager";
 import Analytics from "@/pages/analytics";
 import Marketplaces from "@/pages/marketplaces";
@@ -59,6 +60,7 @@ function Router() {
             <Route path="/pricing" component={Pricing} />
             <Route path="/connections" component={Connections} />
             <Route path="/create-listing" component={CreateListing} />
+            <Route path="/cross-posting" component={CrossPostingManager} />
             <Route path="/bulk-manager" component={BulkManager} />
             <Route path="/automation" component={Automation} />
             <Route path="/automation-settings" component={AutomationSettings} />

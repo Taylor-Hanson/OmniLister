@@ -1,3 +1,12 @@
+/**
+ * Mercari Automation Engine
+ * 
+ * IMPORTANT: Mercari does not provide a public API for third-party integrations.
+ * This automation engine simulates automation features for demonstration purposes only.
+ * In a real implementation, Mercari integration would require manual listing management
+ * or web scraping techniques (which may violate their Terms of Service).
+ */
+
 import {
   type AutomationRule,
   type User,
@@ -41,7 +50,8 @@ interface MarketTrends {
   suggestedPrice?: number;
 }
 
-// Mock Mercari API client - replace with actual implementation
+// Mock Mercari API client - Mercari doesn't provide a public API
+// This simulates automation features for demonstration purposes
 class MockMercariApiClient implements MercariApiClient {
   async sendOffer(itemId: string, offer: MercariOffer, accessToken: string): Promise<void> {
     await this.simulateApiDelay();
