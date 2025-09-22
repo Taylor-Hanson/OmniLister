@@ -78,10 +78,7 @@ export default function AutomationSchedules() {
   // Create schedule mutation
   const createScheduleMutation = useMutation({
     mutationFn: (schedule: any) =>
-      apiRequest('/api/automation/schedules', {
-        method: 'POST',
-        body: JSON.stringify(schedule)
-      }),
+      apiRequest('POST', '/api/automation/schedules', schedule),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation/schedules'] });
       toast({
@@ -96,10 +93,7 @@ export default function AutomationSchedules() {
   // Update schedule mutation
   const updateScheduleMutation = useMutation({
     mutationFn: (data: { id: string; schedule: any }) =>
-      apiRequest(`/api/automation/schedules/${data.id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data.schedule)
-      }),
+      apiRequest('PUT', `/api/automation/schedules/${data.id}`, data.schedule),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation/schedules'] });
       toast({
@@ -112,7 +106,7 @@ export default function AutomationSchedules() {
   // Delete schedule mutation
   const deleteScheduleMutation = useMutation({
     mutationFn: (id: string) =>
-      apiRequest(`/api/automation/schedules/${id}`, { method: 'DELETE' }),
+      apiRequest('DELETE', `/api/automation/schedules/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation/schedules'] });
       toast({
@@ -125,10 +119,7 @@ export default function AutomationSchedules() {
   // Toggle schedule mutation
   const toggleScheduleMutation = useMutation({
     mutationFn: (data: { id: string; enabled: boolean }) =>
-      apiRequest(`/api/automation/schedules/${data.id}/toggle`, {
-        method: 'POST',
-        body: JSON.stringify({ enabled: data.enabled })
-      }),
+      apiRequest('POST', `/api/automation/schedules/${data.id}/toggle`, { enabled: data.enabled }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation/schedules'] });
     }

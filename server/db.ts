@@ -2,7 +2,7 @@ import { config } from 'dotenv';
 config(); // Load environment variables from .env file
 
 import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
+import { drizzle, type NeonDatabase } from 'drizzle-orm/neon-serverless';
 import ws from "ws";
 import * as schema from "@shared/schema";
 
@@ -17,7 +17,8 @@ if (!DATABASE_URL) {
 
 console.log(`🗄️  Connecting to database: ${DATABASE_URL.replace(/\/\/.*@/, '//***:***@')}`);
 
-let pool, db;
+let pool: Pool;
+let db: NeonDatabase<typeof schema>;
 
 try {
   pool = new Pool({ connectionString: DATABASE_URL });

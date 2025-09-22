@@ -133,10 +133,7 @@ export default function AutomationTemplates() {
   // Create template mutation
   const createTemplateMutation = useMutation({
     mutationFn: (template: any) =>
-      apiRequest('/api/automation/templates', {
-        method: 'POST',
-        body: JSON.stringify(template)
-      }),
+      apiRequest('POST', '/api/automation/templates', template),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation/templates'] });
       toast({
@@ -152,10 +149,7 @@ export default function AutomationTemplates() {
   // Update template mutation
   const updateTemplateMutation = useMutation({
     mutationFn: (data: { id: string; template: any }) =>
-      apiRequest(`/api/automation/templates/${data.id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data.template)
-      }),
+      apiRequest('PUT', `/api/automation/templates/${data.id}`, data.template),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation/templates'] });
       toast({
@@ -169,7 +163,7 @@ export default function AutomationTemplates() {
   // Delete template mutation
   const deleteTemplateMutation = useMutation({
     mutationFn: (id: string) =>
-      apiRequest(`/api/automation/templates/${id}`, { method: 'DELETE' }),
+      apiRequest('DELETE', `/api/automation/templates/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation/templates'] });
       toast({
@@ -182,10 +176,7 @@ export default function AutomationTemplates() {
   // Toggle template mutation
   const toggleTemplateMutation = useMutation({
     mutationFn: (data: { id: string; active: boolean }) =>
-      apiRequest(`/api/automation/templates/${data.id}/toggle`, {
-        method: 'POST',
-        body: JSON.stringify({ active: data.active })
-      }),
+      apiRequest('POST', `/api/automation/templates/${data.id}/toggle`, { active: data.active }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/automation/templates'] });
     }

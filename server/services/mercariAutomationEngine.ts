@@ -532,7 +532,7 @@ export class MercariAutomationEngine implements MarketplaceAutomationEngine {
     let discount = config.discountPercentage || 10;
     
     // Adjust discount based on item age
-    const daysListed = Math.floor((Date.now() - listing.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    const daysListed = Math.floor((Date.now() - (listing.createdAt || new Date()).getTime()) / (1000 * 60 * 60 * 24));
     if (daysListed > 30) {
       discount = Math.min(discount * 1.5, 30); // Increase discount for older items, max 30%
     }

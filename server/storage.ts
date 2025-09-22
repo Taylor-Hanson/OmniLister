@@ -707,7 +707,7 @@ export class MemStorage implements IStorage {
       subtitle: listing.subtitle || null,
       category: listing.category || null,
       condition: listing.condition || null,
-      packageWeight: listing.packageWeight || null,
+      packageWeight: listing.packageWeight ? String(listing.packageWeight) : null,
       packageDimensions: listing.packageDimensions || null,
       images: listing.images || null,
       aiGenerated: false,
@@ -932,9 +932,15 @@ export class MemStorage implements IStorage {
   async createSyncRule(userId: string, rule: InsertSyncRule): Promise<SyncRule> {
     const id = randomUUID();
     const newRule: SyncRule = {
-      ...rule,
       id,
       userId,
+      marketplace: rule.marketplace,
+      priority: rule.priority || null,
+      isEnabled: rule.isEnabled || null,
+      priceAdjustment: rule.priceAdjustment || null,
+      priceFormula: rule.priceFormula || null,
+      fieldsToSync: rule.fieldsToSync || {},
+      templateOverrides: rule.templateOverrides || {},
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -966,9 +972,16 @@ export class MemStorage implements IStorage {
   async createSyncHistory(userId: string, history: InsertSyncHistory): Promise<SyncHistory> {
     const id = randomUUID();
     const newHistory: SyncHistory = {
-      ...history,
       id,
       userId,
+      status: history.status,
+      listingId: history.listingId || null,
+      errorMessage: history.errorMessage || null,
+      sourceMarketplace: history.sourceMarketplace || null,
+      targetMarketplace: history.targetMarketplace,
+      syncType: history.syncType,
+      syncData: history.syncData || {},
+      syncDuration: history.syncDuration || null,
       createdAt: new Date(),
     };
     this.syncHistory.set(id, newHistory);
@@ -2514,46 +2527,6 @@ export class MemStorage implements IStorage {
   }
 
 
-  // Circuit Breaker methods
-  async getCircuitBreakerStatus(marketplace: string): Promise<CircuitBreakerStatus | undefined> {
-    const existing = Array.from(this.circuitBreakerStatus.values()).find(status => status.marketplace === marketplace);
-    if (existing) {
-      return existing;
-    }
-    
-    // Create default circuit breaker status if none exists
-    const defaultStatus: CircuitBreakerStatus = {
-      id: randomUUID(),
-      marketplace,
-      status: "closed",
-      failureCount: 0,
-      successCount: 0,
-      lastFailureAt: null,
-      lastSuccessAt: null,
-      openedAt: null,
-      nextRetryAt: null,
-      failureThreshold: 5,
-      recoveryThreshold: 3,
-      timeoutMs: 60000,
-      halfOpenMaxRequests: 3,
-      currentHalfOpenRequests: 0,
-      metadata: {},
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    this.circuitBreakerStatus.set(defaultStatus.id, defaultStatus);
-    return defaultStatus;
-  }
-
-  async updateCircuitBreaker(marketplace: string, updates: Partial<CircuitBreakerStatus>): Promise<CircuitBreakerStatus> {
-    const existing = Array.from(this.circuitBreakerStatus.values()).find(status => status.marketplace === marketplace);
-    if (!existing) {
-      throw new Error('Circuit breaker status not found');
-    }
-    const updated = { ...existing, ...updates, updatedAt: new Date() };
-    this.circuitBreakerStatus.set(existing.id, updated);
-    return updated;
-  }
 
   async getAllCircuitBreakerStatuses(): Promise<CircuitBreakerStatus[]> {
     return Array.from(this.circuitBreakerStatus.values());

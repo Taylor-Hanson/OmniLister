@@ -789,7 +789,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     const priceScore = Math.log(listing.price + 1) * 10;
     
     // Newer items get slight priority
-    const ageInDays = Math.floor((Date.now() - listing.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    const ageInDays = Math.floor((Date.now() - (listing.createdAt || new Date()).getTime()) / (1000 * 60 * 60 * 24));
     const ageScore = Math.max(0, 30 - ageInDays);
     
     // Check bump effectiveness history
@@ -871,7 +871,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
   }
 
   private needsPriceDrop(metrics: ItemMetrics, listing: Listing, config: any): boolean {
-    const ageInDays = Math.floor((Date.now() - listing.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    const ageInDays = Math.floor((Date.now() - (listing.createdAt || new Date()).getTime()) / (1000 * 60 * 60 * 24));
     
     // Drop if old with low engagement
     if (ageInDays > (config.accelerateAfterDays || 30) && metrics.watchers < 2) {
@@ -900,7 +900,7 @@ export class GrailedAutomationEngine implements MarketplaceAutomationEngine {
     let dropPercentage = config.baseDropPercentage || 10;
     
     // Increase drop for older items
-    const ageInDays = Math.floor((Date.now() - listing.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    const ageInDays = Math.floor((Date.now() - (listing.createdAt || new Date()).getTime()) / (1000 * 60 * 60 * 24));
     if (ageInDays > 60) {
       dropPercentage *= 1.5;
     } else if (ageInDays > 30) {

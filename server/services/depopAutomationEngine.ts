@@ -294,7 +294,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
 
       // Check if listing needs refresh
       const daysSinceUpdate = Math.floor(
-        (Date.now() - listing.updatedAt.getTime()) / (1000 * 60 * 60 * 24)
+        (Date.now() - (listing.updatedAt || new Date()).getTime()) / (1000 * 60 * 60 * 24)
       );
 
       if (daysSinceUpdate < refreshIntervalDays) {
@@ -708,7 +708,7 @@ export class DepopAutomationEngine implements MarketplaceAutomationEngine {
   }
 
   private getDaysOld(listing: Listing): number {
-    return Math.floor((Date.now() - listing.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    return Math.floor((Date.now() - (listing.createdAt || new Date()).getTime()) / (1000 * 60 * 60 * 24));
   }
 
   private selectBestHashtags(
