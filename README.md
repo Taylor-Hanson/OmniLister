@@ -161,8 +161,19 @@ npm run check
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Run tests and type checking
+4. Run tests and type checking: `npm run check`
 5. Submit a pull request
+
+### 🔄 Automated PR Testing
+
+This repository includes automated testing with Neon database branches:
+
+- **🗄️ Database Branches**: Each PR gets its own isolated database
+- **🧪 Schema Testing**: Migrations are automatically tested
+- **🔍 Type Checking**: TypeScript errors are checked on every commit
+- **🧹 Auto Cleanup**: Database branches are automatically deleted when PRs close
+
+See [`.github/NEON_SETUP.md`](.github/NEON_SETUP.md) for setup instructions.
 
 ## 📝 License
 
