@@ -1,7 +1,7 @@
 <<<<<<< Current (Your changes)
 # CrossList Pro - AI-Powered Multichannel Listing Platform
 
-CrossList Pro is a production-ready MVP that allows sellers to compose product listings once and post them to multiple marketplaces automatically. The platform features AI-powered product recognition, voice-to-listing technology, and comprehensive marketplace management.
+CrossList Pro is a production-ready MVP that allows sellers to compose product listings once and post them to multiple marketplaces automatically. The platform features AI-powered product recognition, voice-to-listening technology, and comprehensive marketplace management.
 
 ## Features
 
@@ -9,7 +9,7 @@ CrossList Pro is a production-ready MVP that allows sellers to compose product l
 - **AI Product Recognition**: Instantly identify brand, condition, size, material, and optimal pricing from photos
 - **Voice-to-Listing Technology**: Convert speech to structured product listings
 - **Background Auto-Posting**: Cloud-based posting without browser dependency
-- **Bulk Management**: Handle hundreds of listings with spreadsheet-style interface
+- **Bulk Management**: Handle hundreds of listings with a spreadsheet-style interface
 - **Real-time Analytics**: Performance tracking across all marketplaces
 - **Inventory Sync**: Automatic delisting when items sell on any platform
 
@@ -249,7 +249,7 @@ See [`.github/NEON_SETUP.md`](.github/NEON_SETUP.md) for setup instructions.
 
 ## 📝 License
 
-This project is licensed under the MIT License.
+This project is licensed // Copyright 2025 Julie Hanson. All rights reserved..
 
 ## 🆘 Support
 
