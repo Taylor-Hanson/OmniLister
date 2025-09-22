@@ -341,7 +341,7 @@ export class BatchService {
     const marketplaces = batch.targetMarketplaces!;
 
     // For small batches, use optimal timing
-    if (totalItems <= 50) {
+    if ((totalItems || 0) <= 50) {
       return {
         strategy: 'optimal_timing',
         maxItemsPerBatch: totalItems,
@@ -363,7 +363,7 @@ export class BatchService {
     }
 
     // For large batches, use marketplace grouping
-    if (totalItems > 200) {
+    if ((totalItems || 0) > 200) {
       return {
         strategy: 'marketplace_grouping',
         maxItemsPerBatch: 100,
@@ -1061,7 +1061,7 @@ export class BatchService {
       await storage.createBatchQueueEntry({
         batchId,
         priority: batch.priority || 0,
-        estimatedProcessingTime: (batch.totalItems - batch.processedItems) * 60,
+        estimatedProcessingTime: ((batch.totalItems || 0) - (batch.processedItems || 0)) * 60,
         maxConcurrency: 5,
         preferredTimeSlot: new Date(),
         queueMetadata: {

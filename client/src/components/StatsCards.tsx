@@ -2,10 +2,17 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 
+interface UserStats {
+  activeListings: number;
+  monthlyRevenue: number;
+  totalSales: number;
+  conversionRate: number;
+}
+
 export default function StatsCards() {
   const { user } = useAuth();
 
-  const { data: userStats, isLoading } = useQuery({
+  const { data: userStats, isLoading } = useQuery<UserStats>({
     queryKey: ['/api/user/stats'],
     enabled: !!user,
   });

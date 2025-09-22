@@ -274,7 +274,7 @@ export class BatchProcessor {
     const avgMarketplacePerformance = Object.values(marketplacePerformance).reduce((sum: number, perf: any) => sum + (perf.successRate || 0), 0) / marketplaceCount;
 
     // Determine strategy based on analysis
-    if (totalItems <= 50 && !hasRateLimitIssues && avgMarketplacePerformance > 80) {
+    if ((totalItems || 0) <= 50 && !hasRateLimitIssues && avgMarketplacePerformance > 80) {
       // Small batch, healthy conditions - use maximum optimization
       return {
         name: 'maximum_optimization',
@@ -302,7 +302,7 @@ export class BatchProcessor {
       };
     }
 
-    if (totalItems > 500) {
+    if ((totalItems || 0) > 500) {
       // Large batch - use load balancing
       return {
         name: 'load_balanced_processing',
@@ -418,8 +418,8 @@ export class BatchProcessor {
     }
 
     // Penalty for items with previous failures
-    if (item.retryCount > 0) {
-      score -= item.retryCount * 10;
+    if ((item.retryCount || 0) > 0) {
+      score -= (item.retryCount || 0) * 10;
     }
 
     return score;
@@ -1289,7 +1289,7 @@ export class BatchProcessor {
         return { successRate: 70, avgProcessingTime: 60000 }; // Default values
       }
 
-      const successCount = analytics.filter(a => a.success_score > 50).length;
+      const successCount = analytics.filter(a => (a.success_score || 0) > 50).length;
       const successRate = (successCount / analytics.length) * 100;
       const avgProcessingTime = 60000; // Placeholder
 

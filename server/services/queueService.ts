@@ -1140,7 +1140,7 @@ class MercariRelistProcessor implements JobProcessor {
       status: "active" 
     });
     
-    const staleListings = listings.filter(l => l.createdAt < staleDate);
+    const staleListings = listings.filter(l => (l.createdAt || new Date()) < staleDate);
     let relisted = 0;
     
     for (const listing of staleListings) {
@@ -1389,7 +1389,7 @@ class CrossPlatformRelistProcessor implements JobProcessor {
         status: "active" 
       });
       
-      const staleListings = listings.filter(l => l.createdAt < staleDate);
+      const staleListings = listings.filter(l => (l.createdAt || new Date()) < staleDate);
       let relisted = 0;
 
       for (const listing of staleListings) {
@@ -1483,7 +1483,7 @@ export class QueueService {
       await storage.updateJob(job.id, {
         status: "processing",
         startedAt: new Date(),
-        attempts: job.attempts + 1,
+        attempts: (job.attempts || 0) + 1,
       });
 
       await processor.process(job);
@@ -1496,7 +1496,7 @@ export class QueueService {
       // Record success metrics
       await retryMetricsService.recordRetryMetrics(
         job,
-        job.attempts + 1,
+        (job.attempts || 0) + 1,
         "success",
         undefined,
         Date.now() - startTime,
@@ -1557,7 +1557,7 @@ export class QueueService {
       // Record failure metrics
       await retryMetricsService.recordRetryMetrics(
         job,
-        job.attempts + 1,
+        (job.attempts || 0) + 1,
         "failure",
         retryDecision.metadata.failureCategory,
         processingDuration,
@@ -1607,7 +1607,7 @@ export class QueueService {
       console.error(`Failed to handle job failure for ${job.id}:`, retryError);
       
       // Fallback to basic retry logic
-      if (job.attempts >= job.maxAttempts) {
+      if ((job.attempts || 0) >= job.maxAttempts) {
         await storage.updateJob(job.id, {
           status: "failed",
           errorMessage: `${error.message} (retry handling failed: ${retryError instanceof Error ? retryError.message : "unknown"})`,
@@ -1615,7 +1615,7 @@ export class QueueService {
         });
       } else {
         // Simple exponential backoff as fallback
-        const retryDelay = Math.pow(2, job.attempts) * 1000;
+        const retryDelay = Math.pow(2, (job.attempts || 0)) * 1000;
         await storage.updateJob(job.id, {
           status: "pending",
           errorMessage: error.message,
@@ -1646,7 +1646,7 @@ export class QueueService {
       console.warn(`Job ${job.id} moved to dead letter queue:`, {
         dlqId: dlqEntry.id,
         finalFailureCategory,
-        totalAttempts: job.attempts,
+        totalAttempts: (job.attempts || 0),
         requiresManualReview: dlqEntry.requiresManualReview,
       });
       
