@@ -29,7 +29,7 @@ import {
   ExternalLink,
   RefreshCw
 } from 'lucide-react';
-import { marketplaceConfig, type MarketplaceConfig } from '../../shared/marketplaceConfig';
+import { marketplaceConfig, type MarketplaceConfig } from '../../../shared/marketplaceConfig';
 
 interface MarketplaceConnection {
   marketplace: string;
