@@ -1,3 +1,6 @@
+import { config } from 'dotenv';
+config(); // Load environment variables from .env file
+
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-serverless';
 import ws from "ws";
@@ -5,8 +8,12 @@ import * as schema from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
 
-// Use a default PostgreSQL URL for development if not set
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/marketplace_dev';
+// Use the DATABASE_URL from environment variables
+const DATABASE_URL = process.env.DATABASE_URL;
+
+if (!DATABASE_URL) {
+  throw new Error("DATABASE_URL must be set in your .env file");
+}
 
 console.log(`🗄️  Connecting to database: ${DATABASE_URL.replace(/\/\/.*@/, '//***:***@')}`);
 
