@@ -6,6 +6,8 @@ export * from './listings';
 export * from './inventory';
 export * from './rate-limiting';
 export * from './pricing';
+export * from './pricing-rules';
+export * from './analytics';
 export * from './automation';
 export * from './scheduling';
 export * from './marketplace';
