@@ -1,0 +1,11 @@
+marketplace,marketplaceOrderId,soldAt,title,sku,salePrice,shippingCharged,shippingCost,platformFees,discounts,refunds,chargebacks,taxCollected,taxRemittedByMarketplace,currency
+ebay,123456789,2024-01-15,Nike Air Max 90,NK-AM90-001,85.00,12.99,8.50,8.50,0.00,0.00,0.00,7.80,yes,USD
+poshmark,PM-987654321,2024-01-16,Levi's 501 Jeans,LV-501-32,45.00,7.99,7.99,6.75,0.00,0.00,0.00,0.00,no,USD
+mercari,MC-456789123,2024-01-17,Apple iPhone 12,APL-IP12-128,450.00,0.00,15.00,45.00,0.00,0.00,0.00,36.00,yes,USD
+facebook,FB-789123456,2024-01-18,Vintage Coach Purse,VC-CP-001,120.00,0.00,0.00,0.00,0.00,0.00,0.00,9.60,no,USD
+etsy,ET-321654987,2024-01-19,Handmade Ceramic Bowl,HC-CB-001,35.00,8.99,6.50,3.50,0.00,0.00,0.00,3.52,yes,USD
+depop,DP-654987321,2024-01-20,Y2K Platform Boots,Y2K-PB-001,65.00,12.99,10.00,6.50,0.00,0.00,0.00,6.24,yes,USD
+grailed,GR-987321654,2024-01-21,Designer T-Shirt,DT-TS-001,95.00,0.00,0.00,9.50,0.00,0.00,0.00,7.60,no,USD
+vinted,VT-147258369,2024-01-22,Summer Dress,SD-DR-001,25.00,4.99,4.99,2.50,0.00,0.00,0.00,2.40,yes,USD
+ebay,123456790,2024-01-23,Adidas Stan Smith,AD-SS-001,55.00,9.99,7.50,5.50,0.00,0.00,0.00,5.20,yes,USD
+poshmark,PM-987654322,2024-01-24,Chanel Perfume,CH-PF-001,180.00,7.99,7.99,27.00,0.00,0.00,0.00,0.00,no,USD

@@ -1,0 +1,123 @@
+// Fix for nested <button> warning in OmniLister
+// --------------------------------------------------
+// The warning comes from rendering a <button> element inside another <button>,
+// which is invalid DOM nesting. Radix‑UI primitives such as Accordion.Trigger,
+// Tabs.Trigger, Tooltip.Trigger, and AlertDialog.Trigger render a <button>
+// *by default*. When you then place your own <Button> (which itself renders a
+// <button>) inside them, React (correctly) complains.
+// 
+// ✅ **Solution** – always pass `asChild` to the Radix trigger component when
+// you want the child to be the clickable element, and make *that* child a
+// <Button> (or whatever). This causes Radix to clone its child instead of
+// rendering its own <button>, eliminating the extra layer.
+// --------------------------------------------------
+
+/* --------------------------------------------------------------------------
+   accordion.tsx – patched
+   -------------------------------------------------------------------------- */
+
+import * as React from "react"
+import * as AccordionPrimitive from "@radix-ui/react-accordion"
+import { ChevronDown } from "lucide-react"
+import { cn } from "@/lib/utils"
+
+export const Accordion = AccordionPrimitive.Root
+
+export const AccordionItem = React.forwardRef<
+  React.ElementRef<typeof AccordionPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
+>(({ className, ...props }, ref) => (
+  <AccordionPrimitive.Item
+    ref={ref}
+    className={cn("border-b", className)}
+    {...props}
+  />
+))
+AccordionItem.displayName = "AccordionItem"
+
+export const AccordionTrigger = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
+>(({ className, children, ...props }, ref) => (
+  <AccordionPrimitive.Header className="flex w-full items-center">
+    {/*
+      NOTE the `asChild` *here* – Radix clones the child instead of rendering
+      its own <button>. Our child is a <div>, so there is no nested <button>.
+    */}
+    <AccordionPrimitive.Trigger
+      asChild
+      ref={ref}
+      {...props}
+    >
+      <div
+        className={cn(
+          "flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180",
+          className,
+        )}
+      >
+        {children}
+        <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
+      </div>
+    </AccordionPrimitive.Trigger>
+  </AccordionPrimitive.Header>
+))
+AccordionTrigger.displayName = "AccordionTrigger"
+
+export const AccordionContent = React.forwardRef<
+  React.ElementRef<typeof AccordionPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+  <AccordionPrimitive.Content
+    ref={ref}
+    className={cn(
+      "overflow-hidden text-sm data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down",
+      className,
+    )}
+    {...props}
+  >
+    <div className="pb-4 pt-0">{children}</div>
+  </AccordionPrimitive.Content>
+))
+AccordionContent.displayName = "AccordionContent"
+
+/* --------------------------------------------------------------------------
+   tooltip.tsx – patched snippet (use asChild)
+   -------------------------------------------------------------------------- */
+
+{/* BEFORE (❌ nested <button>) */}
+// <Tooltip.Trigger>
+//   <Button size="icon" variant="ghost">
+//     <InfoIcon />
+//   </Button>
+// </Tooltip.Trigger>
+
+{/* AFTER (✅ no nested <button>) */}
+// <Tooltip.Trigger asChild>
+//   <Button size="icon" variant="ghost">
+//     <InfoIcon />
+//   </Button>
+// </Tooltip.Trigger>
+
+/* --------------------------------------------------------------------------
+   tabs.tsx – patched snippet (use asChild)
+   -------------------------------------------------------------------------- */
+
+{/* BEFORE */}
+// <Tabs.Trigger value="details">
+//   <Button>Details</Button>
+// </Tabs.Trigger>
+
+{/* AFTER */}
+// <Tabs.Trigger value="details" asChild>
+//   <Button variant="ghost">Details</Button>
+// </Tabs.Trigger>
+
+/* --------------------------------------------------------------------------
+   create-listing.tsx – example of safe usage
+   -------------------------------------------------------------------------- */
+
+// Replace any <AccordionTrigger> that wraps a <Button> with the `asChild` pattern
+// illustrated above. The same applies to Tooltip, Tabs, AlertDialog, DropdownMenu,
+// Popover, and any other Radix primitive that defaults to <button>.
+
+// --- End of fix ---
