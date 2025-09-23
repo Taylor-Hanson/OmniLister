@@ -1,0 +1,206 @@
+name: Verify Default Branch
+
+on:
+  schedule:
+    # Run daily at 9 AM UTC
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+    inputs:
+      verbose:
+        description: 'Enable verbose output'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  verify-default-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify default branch
+        id: verify-branch
+        run: |
+          echo "🔍 Verifying default branch configuration..."
+          
+          # Get current default branch
+          CURRENT_DEFAULT=$(git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@')
+          echo "Current default branch: $CURRENT_DEFAULT"
+          
+          # Expected monorepo branch
+          MONOREPO_BRANCH="main"
+          
+          # Check if default branch is correct
+          if [ "$CURRENT_DEFAULT" = "$MONOREPO_BRANCH" ]; then
+            echo "✅ Default branch is correctly set to '$MONOREPO_BRANCH'"
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Default branch is '$CURRENT_DEFAULT', expected '$MONOREPO_BRANCH'"
+            echo "status=failure" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Verify monorepo structure
+        id: verify-structure
+        run: |
+          echo "🏗️ Verifying monorepo structure..."
+          
+          # Check for required directories
+          MISSING_DIRS=()
+          
+          if [ ! -d "apps" ]; then
+            MISSING_DIRS+=("apps")
+          fi
+          
+          if [ ! -d "packages" ]; then
+            MISSING_DIRS+=("packages")
+          fi
+          
+          if [ ! -d "apps/web" ]; then
+            MISSING_DIRS+=("apps/web")
+          fi
+          
+          if [ ! -d "apps/mobile" ]; then
+            MISSING_DIRS+=("apps/mobile")
+          fi
+          
+          if [ ! -d "packages/core" ]; then
+            MISSING_DIRS+=("packages/core")
+          fi
+          
+          if [ ! -d "packages/api" ]; then
+            MISSING_DIRS+=("packages/api")
+          fi
+          
+          if [ ! -d "packages/flags" ]; then
+            MISSING_DIRS+=("packages/flags")
+          fi
+          
+          if [ ${#MISSING_DIRS[@]} -eq 0 ]; then
+            echo "✅ All required monorepo directories exist"
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Missing directories: ${MISSING_DIRS[*]}"
+            echo "status=failure" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for mobile-app branch
+        id: check-mobile-app
+        run: |
+          echo "📱 Checking for mobile-app branch..."
+          
+          if git show-ref --verify --quiet refs/remotes/origin/mobile-app; then
+            echo "✅ Mobile-app branch exists (should be archived)"
+            echo "status=exists" >> $GITHUB_OUTPUT
+          else
+            echo "ℹ️ Mobile-app branch not found (may be archived)"
+            echo "status=not-found" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Verify package.json workspaces
+        id: verify-workspaces
+        run: |
+          echo "📦 Verifying package.json workspaces configuration..."
+          
+          if [ -f "package.json" ]; then
+            # Check if workspaces are configured
+            if grep -q '"workspaces"' package.json; then
+              echo "✅ Workspaces configuration found in root package.json"
+              echo "status=success" >> $GITHUB_OUTPUT
+            else
+              echo "❌ Workspaces configuration missing from root package.json"
+              echo "status=failure" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "❌ Root package.json not found"
+            echo "status=failure" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate report
+        if: always()
+        run: |
+          echo "📊 Generating verification report..."
+          echo ""
+          echo "## Default Branch Verification Report"
+          echo ""
+          echo "| Check | Status |"
+          echo "|-------|--------|"
+          echo "| Default Branch | ${{ steps.verify-branch.outputs.status }} |"
+          echo "| Monorepo Structure | ${{ steps.verify-structure.outputs.status }} |"
+          echo "| Mobile-App Branch | ${{ steps.check-mobile-app.outputs.status }} |"
+          echo "| Workspaces Config | ${{ steps.verify-workspaces.outputs.status }} |"
+          echo ""
+          
+          # Determine overall status
+          if [ "${{ steps.verify-branch.outputs.status }}" = "success" ] && \
+             [ "${{ steps.verify-structure.outputs.status }}" = "success" ] && \
+             [ "${{ steps.verify-workspaces.outputs.status }}" = "success" ]; then
+            echo "🎉 All checks passed! Monorepo is properly configured."
+            echo "overall_status=success" >> $GITHUB_OUTPUT
+          else
+            echo "⚠️ Some checks failed. Review the report above."
+            echo "overall_status=failure" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR (if applicable)
+        if: github.event_name == 'pull_request' && steps.verify-branch.outputs.overall_status == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Default Branch Verification')
+            );
+            
+            const commentBody = `## ⚠️ Default Branch Verification Failed
+            
+            This PR may affect the monorepo structure. Please verify:
+            
+            1. Default branch is set to \`main\`
+            2. All required directories exist
+            3. Workspaces are properly configured
+            
+            See the [branching documentation](https://github.com/${{ github.repository }}/blob/main/docs/release/BRANCHING.md) for details.
+            `;
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+
+      - name: Fail job if verification failed
+        if: steps.verify-branch.outputs.overall_status == 'failure'
+        run: |
+          echo "❌ Default branch verification failed!"
+          echo "Please review the report above and fix any issues."
+          echo ""
+          echo "To fix the default branch:"
+          echo "1. Go to repository Settings → General"
+          echo "2. Change default branch to 'main'"
+          echo "3. Archive the 'mobile-app' branch"
+          echo ""
+          echo "See scripts/rel/flip-default-branch.md for detailed instructions."
+          exit 1
