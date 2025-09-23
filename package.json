@@ -1,0 +1,50 @@
+{
+  "name": "omnilister-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OmniLister - AI-Powered Multichannel Listing Platform",
+  "license": "MIT",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:web": "turbo run dev --filter=web",
+    "dev:mobile": "turbo run dev --filter=mobile",
+    "build": "turbo run build",
+    "build:web": "turbo run build --filter=web",
+    "build:mobile": "turbo run build --filter=mobile",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean",
+    "db:push": "turbo run db:push --filter=web",
+    "db:init": "turbo run db:init --filter=web",
+    "db:test": "turbo run db:test --filter=web",
+    "setup": "npm install && npm run db:init",
+    "mobile:dev:ios": "cd apps/mobile/OmniListerMobile && eas build --platform ios --profile development",
+    "mobile:dev:android": "cd apps/mobile/OmniListerMobile && eas build --platform android --profile development",
+    "mobile:dev": "cd apps/mobile/OmniListerMobile && eas build --platform all --profile development",
+    "mobile:beta:ios": "cd apps/mobile/OmniListerMobile && eas build --platform ios --profile preview",
+    "mobile:beta:android": "cd apps/mobile/OmniListerMobile && eas build --platform android --profile preview",
+    "mobile:beta": "cd apps/mobile/OmniListerMobile && eas build --platform all --profile preview",
+    "mobile:prod:ios": "cd apps/mobile/OmniListerMobile && eas build --platform ios --profile production",
+    "mobile:prod:android": "cd apps/mobile/OmniListerMobile && eas build --platform android --profile production",
+    "mobile:prod": "cd apps/mobile/OmniListerMobile && eas build --platform all --profile production",
+    "mobile:submit:ios": "cd apps/mobile/OmniListerMobile && eas submit --platform ios --latest",
+    "mobile:submit:android": "cd apps/mobile/OmniListerMobile && eas submit --platform android --latest",
+    "mobile:submit:ios:prod": "cd apps/mobile/OmniListerMobile && eas submit --platform ios --latest --profile production",
+    "mobile:submit:android:prod": "cd apps/mobile/OmniListerMobile && eas submit --platform android --latest --profile production"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.17",
+    "turbo": "^2.3.1",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "packageManager": "npm@10.0.0"
+}
