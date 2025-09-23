@@ -164,68 +164,89 @@ export class FeatureFlagManager {
 
 // Default feature flags
 export const DEFAULT_FEATURE_FLAGS: Record<string, FeatureFlag> = {
-  'dualAi:enabled': {
-    key: 'dualAi:enabled',
+  // Mobile-specific features
+  'mobile.dualAi': {
+    key: 'mobile.dualAi',
     enabled: true,
-    rolloutPercentage: 100,
-    description: 'Enable dual AI model integration (GPT-5 + Claude)'
+    conditions: { platform: 'mobile' },
+    description: 'Enable dual AI on mobile preview'
   },
-  'dualAi:routeSelection': {
-    key: 'dualAi:routeSelection',
+  'mobile.offlineQueue': {
+    key: 'mobile.offlineQueue',
     enabled: true,
-    rolloutPercentage: 50,
+    conditions: { platform: 'mobile' },
+    description: 'Enable offline queue for mobile'
+  },
+  'mobile.pushNotifications': {
+    key: 'mobile.pushNotifications',
+    enabled: true,
+    conditions: { platform: 'mobile' },
+    description: 'Enable push notifications on mobile'
+  },
+  'mobile.cameraListing': {
+    key: 'mobile.cameraListing',
+    enabled: true,
+    conditions: { platform: 'mobile' },
+    description: 'Enable camera listing flow on mobile'
+  },
+  
+  // Web-specific features
+  'web.pricingAutomation': {
+    key: 'web.pricingAutomation',
+    enabled: false,
+    conditions: { platform: 'web' },
+    description: 'Enable pricing automation on web'
+  },
+  'web.analytics': {
+    key: 'web.analytics',
+    enabled: false,
+    conditions: { platform: 'web' },
+    description: 'Enable analytics dashboard on web'
+  },
+  
+  // Cross-platform features
+  'dualAi.routeSelection': {
+    key: 'dualAi.routeSelection',
+    enabled: false,
     description: 'Use dual AI for route selection optimization'
   },
-  'offline:enabled': {
-    key: 'offline:enabled',
-    enabled: true,
-    platform: 'mobile',
-    description: 'Enable offline mode for mobile app'
+  'bulkOperations': {
+    key: 'bulkOperations',
+    enabled: false,
+    description: 'Enable bulk operations'
   },
-  'notifications:push': {
-    key: 'notifications:push',
-    enabled: true,
-    platform: 'mobile',
-    description: 'Enable push notifications'
+  'advancedAutomation': {
+    key: 'advancedAutomation',
+    enabled: false,
+    description: 'Enable advanced automation features'
   },
-  'analytics:advanced': {
-    key: 'analytics:advanced',
-    enabled: true,
-    rolloutPercentage: 100,
-    description: 'Enable advanced analytics features'
+  
+  // Paywall features
+  'paywall.advancedAutomation': {
+    key: 'paywall.advancedAutomation',
+    enabled: false,
+    description: 'Gate advanced automation behind paywall'
   },
-  'scheduling:smart': {
-    key: 'scheduling:smart',
-    enabled: true,
-    rolloutPercentage: 100,
-    description: 'Enable smart scheduling optimization'
+  'paywall.bulkAnalytics': {
+    key: 'paywall.bulkAnalytics',
+    enabled: false,
+    description: 'Gate bulk analytics behind paywall'
   },
-  'optimization:auto': {
-    key: 'optimization:auto',
-    enabled: true,
-    rolloutPercentage: 75,
-    description: 'Enable automatic listing optimization'
-  },
-  'camera:ai': {
-    key: 'camera:ai',
-    enabled: true,
-    platform: 'mobile',
-    description: 'Enable AI-powered camera features'
-  },
-  'voice:listing': {
-    key: 'voice:listing',
-    enabled: true,
-    platform: 'mobile',
-    rolloutPercentage: 50,
-    description: 'Enable voice-to-listing functionality'
-  },
-  'barcode:scanning': {
-    key: 'barcode:scanning',
-    enabled: true,
-    platform: 'mobile',
-    description: 'Enable barcode scanning'
+  'paywall.premiumSupport': {
+    key: 'paywall.premiumSupport',
+    enabled: false,
+    description: 'Gate premium support behind paywall'
   }
 };
+
+// Simple flag function for easy usage
+export function flag(name: string): boolean {
+  const flag = DEFAULT_FEATURE_FLAGS[name];
+  if (!flag) {
+    return false;
+  }
+  return flag.enabled;
+}
 
 // Feature flag utilities
 export const flagUtils = {

@@ -10,3 +10,4 @@ export * from './automation';
 export * from './scheduling';
 export * from './marketplace';
 export * from './validation';
+export * from './entitlements';

@@ -138,6 +138,14 @@ export const API_ENDPOINTS = {
     UPDATE_TICKET: (id: string) => `/support/tickets/${id}`,
     MESSAGES: (id: string) => `/support/tickets/${id}/messages`,
     FAQ: '/support/faq'
+  },
+
+  // Entitlements
+  ENTITLEMENTS: {
+    VERIFY_RECEIPT: '/entitlements/verify',
+    GET_USER_ENTITLEMENTS: '/entitlements',
+    GRANT_TRIAL: '/entitlements/trial',
+    REVOKE_ENTITLEMENT: (entitlement: string) => `/entitlements/${entitlement}`
   }
 } as const;
 

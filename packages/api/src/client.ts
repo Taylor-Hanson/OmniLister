@@ -215,6 +215,25 @@ export class ApiClient {
   getConfig(): Readonly<Required<ApiClientConfig>> {
     return { ...this.config };
   }
+
+  // Entitlements API methods
+  entitlements = {
+    verifyReceipt: async (receipt: any) => {
+      return this.post('/entitlements/verify', receipt);
+    },
+    
+    getUserEntitlements: async () => {
+      return this.get('/entitlements');
+    },
+    
+    grantTrial: async () => {
+      return this.post('/entitlements/trial');
+    },
+    
+    revokeEntitlement: async (entitlement: string) => {
+      return this.delete(`/entitlements/${entitlement}`);
+    },
+  };
 }
 
 // API Error class
