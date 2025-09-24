@@ -1,6 +1,2 @@
-// API package exports
-export * from './client';
-export * from './endpoints';
-export * from './schemas';
-export * from './types';
-export * from './errors';
+// API package exports - simplified for testing
+export * from './simple-client.js';

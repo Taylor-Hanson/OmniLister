@@ -354,6 +354,3 @@ export class AnalyticsUtils {
 
 // Export singleton instance
 export const analyticsService = new MockAnalyticsService();
-
-// Export types for use in other modules
-export type { AnalyticsService, DateRange, AnalyticsFilters, TrendData, ExportData };

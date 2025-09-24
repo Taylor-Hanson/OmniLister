@@ -287,6 +287,3 @@ export class MockEntitlementsService implements EntitlementsService {
 
 // Export singleton instance
 export const entitlementsService = new MockEntitlementsService();
-
-// Export types for use in other modules
-export type { EntitlementsService };

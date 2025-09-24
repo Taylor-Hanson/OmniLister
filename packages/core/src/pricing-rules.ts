@@ -287,6 +287,3 @@ export class PricingRulesEngine {
 
 // Export singleton instance
 export const pricingRulesEngine = new PricingRulesEngine();
-
-// Export types for use in other modules
-export type { PricingRulesEngine };

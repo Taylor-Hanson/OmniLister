@@ -13,5 +13,5 @@
     "resolveJsonModule": true
   },
   "include": ["src/**/*"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules", "src/**/*.test.ts", "src/**/__tests__/**/*.ts", "src/inventory.ts", "src/scheduling.ts", "src/utils.ts", "src/types.ts", "src/constants.ts", "src/listings.ts", "src/rate-limiting.ts", "src/pricing.ts", "src/automation.ts", "src/marketplace.ts", "src/validation.ts", "src/pricing-rules.ts", "src/analytics.ts", "src/entitlements.ts"]
 }

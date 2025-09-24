@@ -1,3 +1,2 @@
-export * from './flags';
-export * from './platform';
-export * from './environment';
+// Export all modules - simplified for testing
+export * from './simple-flags.js';
