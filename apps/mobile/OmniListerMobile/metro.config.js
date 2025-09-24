@@ -1,4 +1,4 @@
-import { getDefaultConfig } from 'expo/metro-config';
+const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
@@ -17,4 +17,13 @@ config.resolver.assetExts.push(
 // Add support for additional source extensions
 config.resolver.sourceExts.push('jsx', 'tsx', 'ts', 'js');
 
-export default config;
+// Add support for monorepo packages
+config.watchFolders = [
+  __dirname,
+  __dirname + '/../../../packages/core',
+  __dirname + '/../../../packages/api',
+  __dirname + '/../../../packages/flags',
+  __dirname + '/../../../packages/tokens'
+];
+
+module.exports = config;
