@@ -2,7 +2,7 @@ import {
   type AutomationRule,
   type AutomationSchedule,
   type InsertAutomationSchedule
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
 import { queueService } from "./queueService";
 import parseExpression from "cron-parser";

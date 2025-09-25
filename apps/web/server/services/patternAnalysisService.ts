@@ -2,7 +2,7 @@ import {
   type PostingSuccessAnalytics, 
   type Listing,
   type SalesMetrics
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
 import { subDays, format, getHours, getDay, differenceInDays, startOfWeek, endOfWeek } from "date-fns";
 

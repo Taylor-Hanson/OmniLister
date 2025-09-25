@@ -3,7 +3,7 @@ import {
   type User,
   type Listing,
   type MarketplaceConnection
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
 import { rateLimitService } from "./rateLimitService";
 import type { MarketplaceAutomationEngine } from "./automationService";

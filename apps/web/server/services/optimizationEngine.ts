@@ -5,7 +5,7 @@ import {
   type MarketplacePostingRules,
   type Job,
   type MarketplaceConnection
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
 import { analyticsService } from "./analyticsService";
 import { smartScheduler } from "./smartScheduler";

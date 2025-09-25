@@ -2,7 +2,7 @@ import {
   type CircuitBreakerStatus, 
   type InsertCircuitBreakerStatus,
   type MarketplaceRetryConfig 
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
 
 export type CircuitBreakerState = "closed" | "open" | "half_open";

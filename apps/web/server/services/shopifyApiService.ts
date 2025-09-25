@@ -1,4 +1,4 @@
-import { type MarketplaceConnection, type Listing, type InsertListing } from "@shared/schema";
+import { type MarketplaceConnection, type Listing, type InsertListing } from "../shared/schema.js";
 import { storage } from "../storage";
 import crypto from "crypto";
 

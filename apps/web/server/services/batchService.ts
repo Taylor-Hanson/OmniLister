@@ -6,7 +6,7 @@ import {
   type BatchQueue, type InsertBatchQueue,
   type Listing, type InsertListing,
   type Job, type User
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
 import { smartScheduler } from "./smartScheduler";
 import { optimizationEngine } from "./optimizationEngine";

@@ -5,7 +5,7 @@ import {
   type RetryMetrics,
   type InsertJobRetryHistory,
   type InsertRetryMetrics
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
 import { failureCategorizationService, type FailureAnalysis, type ErrorContext } from "./failureCategorizationService";
 import { randomUUID } from "crypto";

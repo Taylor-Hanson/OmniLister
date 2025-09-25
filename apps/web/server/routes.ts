@@ -21,7 +21,7 @@ import {
   Listing,
   insertAutomationRuleSchema, insertAutomationScheduleSchema, insertAutomationLogSchema,
   insertPoshmarkShareSettingsSchema, insertOfferTemplateSchema
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { hashPassword, verifyPassword, generateToken, validatePassword, verifyToken } from "./auth";
 import { ObjectStorageService } from "./objectStorage";
 import { automationService } from "./services/automationService";
@@ -123,7 +123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Optimization settings routes
   app.put("/api/user/optimization-settings", requireAuth, async (req, res) => {
     try {
-      const { optimizationSettingsSchema } = await import("@shared/schema");
+      const { optimizationSettingsSchema } = await import("../shared/schema.js");
       const settings = optimizationSettingsSchema.parse(req.body);
       
       await storage.updateUser(req.user!.id, { 
@@ -792,7 +792,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // eBay Constants endpoint for frontend
   app.get("/api/ebay/constants", async (req, res) => {
     try {
-      const { EBAY_CONDITIONS, LISTING_FORMATS, LISTING_DURATIONS } = await import("@shared/schema");
+      const { EBAY_CONDITIONS, LISTING_FORMATS, LISTING_DURATIONS } = await import("../shared/schema.js");
       res.json({
         conditions: EBAY_CONDITIONS,
         listingFormats: LISTING_FORMATS,
@@ -894,7 +894,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Process condition mapping - if condition is provided without conditionId, auto-map it
       if (rawData.condition && !rawData.conditionId) {
-        const { EBAY_CONDITIONS } = await import("@shared/schema");
+        const { EBAY_CONDITIONS } = await import("../shared/schema.js");
         const conditionInfo = Object.values(EBAY_CONDITIONS).find(c => c.value === rawData.condition);
         if (conditionInfo) {
           rawData.conditionId = conditionInfo.id;
@@ -979,7 +979,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Process condition mapping - if condition is provided without conditionId, auto-map it
       if (rawData.condition && !rawData.conditionId) {
-        const { EBAY_CONDITIONS } = await import("@shared/schema");
+        const { EBAY_CONDITIONS } = await import("../shared/schema.js");
         const conditionInfo = Object.values(EBAY_CONDITIONS).find(c => c.value === rawData.condition);
         if (conditionInfo) {
           rawData.conditionId = conditionInfo.id;

@@ -3,7 +3,7 @@ import {
   type InsertAutomationRule,
   type User,
   type AutomationLog
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
 import { rateLimitService } from "./rateLimitService";
 import { circuitBreakerService } from "./circuitBreakerService";

@@ -44,7 +44,7 @@ import {
   automationLogs, type AutomationLog, type InsertAutomationLog,
   poshmarkShareSettings, type PoshmarkShareSettings, type InsertPoshmarkShareSettings,
   offerTemplates, type OfferTemplate, type InsertOfferTemplate
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { db } from "./db";
 import { eq, and, or, desc, gte, lte, isNull, isNotNull, sql } from "drizzle-orm";
 import { type IStorage } from "./storage";

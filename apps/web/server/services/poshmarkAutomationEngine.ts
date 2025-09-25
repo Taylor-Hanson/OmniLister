@@ -5,7 +5,7 @@ import {
   type OfferTemplate,
   type Listing,
   type MarketplaceConnection
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
 import { rateLimitService } from "./rateLimitService";
 import { marketplaceService } from "./marketplaceService";

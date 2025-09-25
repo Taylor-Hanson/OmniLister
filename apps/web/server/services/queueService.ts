@@ -1,4 +1,4 @@
-import { type Job, type Listing, type ListingPost, type User, type JobRetryHistory, type AutomationRule, type AutomationLog } from "@shared/schema";
+import { type Job, type Listing, type ListingPost, type User, type JobRetryHistory, type AutomationRule, type AutomationLog } from "../shared/schema.js";
 import { storage } from "../storage";
 import { marketplaceService } from "./marketplaceService";
 import { smartScheduler } from "./smartScheduler";

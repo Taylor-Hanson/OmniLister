@@ -6,9 +6,9 @@ import {
   type QueueDistribution,
   type User,
   type Listing
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
-import { marketplaces } from "@shared/marketplaceConfig";
+import { marketplaces } from "../shared/marketplaceConfig.js";
 import { randomUUID } from "crypto";
 import { rateLimitService, type RateLimitStatus } from "./rateLimitService";
 import { optimizationEngine } from "./optimizationEngine";

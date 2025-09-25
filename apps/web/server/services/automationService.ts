@@ -3,7 +3,7 @@ import {
   type AutomationSchedule, type InsertAutomationSchedule,
   type AutomationLog, type InsertAutomationLog,
   type User
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
 import { poshmarkAutomationEngine } from "./poshmarkAutomationEngine";
 import { mercariAutomationEngine } from "./mercariAutomationEngine";

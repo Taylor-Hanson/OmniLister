@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import type { AnalyticsEvent, SalesMetrics, InventoryMetrics, MarketplaceMetrics, Listing } from "@shared/schema";
+import type { AnalyticsEvent, SalesMetrics, InventoryMetrics, MarketplaceMetrics, Listing } from "../shared/schema.js";
 import { subDays, startOfDay, endOfDay, differenceInDays } from "date-fns";
 import { crossPlatformSyncService } from "./crossPlatformSyncService";
 

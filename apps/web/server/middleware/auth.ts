@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
-import { type User } from "@shared/schema";
+import { type User } from "../shared/schema.js";
 import { verifyToken } from "../auth";
 
 declare global {

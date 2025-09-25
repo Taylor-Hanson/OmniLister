@@ -1,4 +1,4 @@
-import { type RetryMetrics, type InsertRetryMetrics, type Job, type JobRetryHistory } from "@shared/schema";
+import { type RetryMetrics, type InsertRetryMetrics, type Job, type JobRetryHistory } from "../shared/schema.js";
 import { storage } from "../storage";
 import { randomUUID } from "crypto";
 

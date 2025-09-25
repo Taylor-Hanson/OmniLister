@@ -44,7 +44,7 @@ import {
   type AutomationLog, type InsertAutomationLog,
   type PoshmarkShareSettings, type InsertPoshmarkShareSettings,
   type OfferTemplate, type InsertOfferTemplate
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { randomUUID } from "crypto";
 
 export interface IStorage {

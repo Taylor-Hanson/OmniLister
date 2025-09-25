@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { storage } from "../storage";
 import { crossPlatformSyncService } from "./crossPlatformSyncService";
 import { analyticsService } from "./analyticsService";
-import { marketplaces } from "@shared/marketplaceConfig";
+import { marketplaces } from "../shared/marketplaceConfig.js";
 import type { 
   WebhookConfiguration, 
   WebhookEvent, 
@@ -11,7 +11,7 @@ import type {
   InsertWebhookEvent,
   InsertWebhookDelivery,
   InsertWebhookHealthMetrics
-} from "@shared/schema";
+} from "../shared/schema.js";
 
 export interface WebhookPayload {
   headers: Record<string, string>;

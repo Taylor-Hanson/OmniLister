@@ -4,7 +4,7 @@ import {
   type InsertDeadLetterQueue,
   type JobRetryHistory,
   type User
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { storage } from "../storage";
 import { randomUUID } from "crypto";
 

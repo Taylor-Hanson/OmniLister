@@ -3,7 +3,7 @@ import { marketplaceService } from "./marketplaceService";
 import { analyticsService } from "./analyticsService";
 import { crossPlatformSyncService } from "./crossPlatformSyncService";
 import { webhookService } from "./webhookService";
-import { marketplaces } from "@shared/marketplaceConfig";
+import { marketplaces } from "../shared/marketplaceConfig.js";
 import type { 
   PollingSchedule, 
   Listing, 
@@ -11,7 +11,7 @@ import type {
   ListingPost,
   Sale,
   InsertSale
-} from "@shared/schema";
+} from "../shared/schema.js";
 
 export interface PollingResult {
   marketplace: string;

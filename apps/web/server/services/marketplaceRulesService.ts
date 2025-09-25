@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import { type InsertMarketplacePostingRules } from "@shared/schema";
+import { type InsertMarketplacePostingRules } from "../shared/schema.js";
 
 /**
  * Service for managing marketplace-specific posting rules and constraints
