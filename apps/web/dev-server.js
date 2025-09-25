@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import Database from 'better-sqlite3';
 import { join } from 'path';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 const app = express();
 app.use(express.json());
@@ -75,7 +76,7 @@ function authenticateToken(req, res, next) {
   next();
 }
 
-// Routes
+// API Routes
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -179,27 +180,26 @@ app.get('/api/user', authenticateToken, (req, res) => {
   }
 });
 
-// Serve static files (for development)
-app.use(express.static('src'));
-app.use(express.static('.'));
-
-// Serve the main HTML file
-app.get('/', (req, res) => {
-  res.sendFile(join(process.cwd(), 'index.html'));
-});
-
-// Catch-all handler for React Router (SPA)
-app.get('*', (req, res) => {
-  res.sendFile(join(process.cwd(), 'index.html'));
-});
+// Proxy all other requests to Vite dev server
+app.use('/', createProxyMiddleware({
+  target: 'http://localhost:5173',
+  changeOrigin: true,
+  ws: true, // Enable WebSocket proxying for HMR
+  onError: (err, req, res) => {
+    console.log('Proxy error:', err.message);
+    res.status(500).send('Proxy error: ' + err.message);
+  }
+}));
 
 // Start server
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`🚀 Server running on http://localhost:${port}`);
-  console.log(`📧 Test the API endpoints:`);
+  console.log(`🚀 API Server running on http://localhost:${port}`);
+  console.log(`📧 API endpoints:`);
   console.log(`   POST /api/auth/register`);
   console.log(`   POST /api/auth/login`);
   console.log(`   GET  /api/user`);
   console.log(`   GET  /api/health`);
+  console.log(`🔄 Proxying frontend requests to Vite dev server on port 5173`);
+  console.log(`💡 Make sure to run 'npm run dev:frontend' in another terminal!`);
 });
