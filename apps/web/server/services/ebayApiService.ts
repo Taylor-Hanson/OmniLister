@@ -1,4 +1,4 @@
-import { type Listing, type MarketplaceConnection, EBAY_CONDITIONS } from "../shared/schema.js";
+import { type Listing, type MarketplaceConnection, EBAY_CONDITIONS } from "../shared/schema.ts";
 
 // eBay API Types
 export interface EbayInventoryItem {

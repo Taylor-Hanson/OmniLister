@@ -1,7 +1,7 @@
 import { 
   type Batch, type BatchItem, type Job, type User, type Listing,
   type BatchAnalytics, type InsertBatchAnalytics
-} from "../shared/schema.js";
+} from "../shared/schema.ts";
 import { storage } from "../storage";
 import { batchService } from "./batchService";
 import { optimizationEngine } from "./optimizationEngine";

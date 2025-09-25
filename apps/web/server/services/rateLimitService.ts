@@ -1,7 +1,7 @@
-import { type RateLimitTracker, type InsertRateLimitTracker } from "../shared/schema.js";
+import { type RateLimitTracker, type InsertRateLimitTracker } from "../shared/schema.ts";
 import { storage } from "../storage";
 import { circuitBreakerService } from "./circuitBreakerService";
-import { marketplaces } from "../shared/marketplaceConfig.js";
+import { marketplaces } from "../shared/marketplaceConfig.ts";
 
 export interface RateLimitConfig {
   marketplace: string;

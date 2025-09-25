@@ -10,7 +10,7 @@ import type {
   SyncConflict,
   InsertSyncHistory,
   InsertSyncConflict
-} from "../shared/schema.js";
+} from "../shared/schema.ts";
 
 export interface SyncResult {
   success: boolean;

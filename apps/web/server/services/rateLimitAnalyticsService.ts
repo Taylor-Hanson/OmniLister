@@ -1,4 +1,4 @@
-import { type AnalyticsEvent, type InsertAnalyticsEvent } from "../shared/schema.js";
+import { type AnalyticsEvent, type InsertAnalyticsEvent } from "../shared/schema.ts";
 import { storage } from "../storage";
 import { rateLimitService } from "./rateLimitService";
 

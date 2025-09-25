@@ -4,7 +4,7 @@ import {
   type SalesMetrics,
   type User,
   type Job
-} from "../shared/schema.js";
+} from "../shared/schema.ts";
 import { storage } from "../storage";
 import { optimizationEngine, type OptimizationInsight } from "./optimizationEngine";
 import { patternAnalysisService, type CorrelationResult, type TrendAnalysis } from "./patternAnalysisService";

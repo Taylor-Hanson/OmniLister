@@ -13,7 +13,7 @@ import {
   type Listing,
   type MarketplaceConnection,
   type InsertAutomationLog
-} from "../shared/schema.js";
+} from "../shared/schema.ts";
 import { storage } from "../storage";
 import { rateLimitService } from "./rateLimitService";
 import { marketplaceService } from "./marketplaceService";

@@ -1,7 +1,7 @@
 import { config } from 'dotenv';
 config(); // Load environment variables from .env file
 
-import * as schema from "../shared/schema.js";
+import * as schema from "../shared/schema.ts";
 
 // Check if we should use SQLite for development
 const USE_SQLITE = process.env.USE_SQLITE === 'true' || !process.env.DATABASE_URL;

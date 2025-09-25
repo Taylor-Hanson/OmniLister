@@ -1,7 +1,7 @@
 import { storage } from "../storage";
 import { marketplaceService } from "./marketplaceService";
 import { queueService } from "./queueService";
-import { type AutoDelistRule, type InsertAutoDelistHistory, type Listing, type ListingPost } from "../shared/schema.js";
+import { type AutoDelistRule, type InsertAutoDelistHistory, type Listing, type ListingPost } from "../shared/schema.ts";
 
 class AutoDelistService {
   /**

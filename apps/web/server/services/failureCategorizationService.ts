@@ -1,4 +1,4 @@
-import { type FailureCategory, type InsertFailureCategory } from "../shared/schema.js";
+import { type FailureCategory, type InsertFailureCategory } from "../shared/schema.ts";
 import { storage } from "../storage";
 
 export interface FailureAnalysis {

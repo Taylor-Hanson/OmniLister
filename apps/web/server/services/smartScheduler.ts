@@ -6,9 +6,9 @@ import {
   type QueueDistribution,
   type User,
   type Listing
-} from "../shared/schema.js";
+} from "../shared/schema.ts";
 import { storage } from "../storage";
-import { marketplaces } from "../shared/marketplaceConfig.js";
+import { marketplaces } from "../shared/marketplaceConfig.ts";
 import { randomUUID } from "crypto";
 import { rateLimitService, type RateLimitStatus } from "./rateLimitService";
 import { optimizationEngine } from "./optimizationEngine";

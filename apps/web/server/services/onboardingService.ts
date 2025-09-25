@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import type { OnboardingProgress } from "../shared/schema.js";
+import type { OnboardingProgress } from "../shared/schema.ts";
 
 // Define the onboarding steps configuration
 export const ONBOARDING_STEPS = [

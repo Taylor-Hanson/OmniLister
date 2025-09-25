@@ -12,7 +12,7 @@ import { type
   InsertCrossPlatformSyncJob,
   InsertCrossPlatformSyncHistory,
   Job
-} from "../shared/schema.js";
+} from "../shared/schema.ts";
 
 export interface SyncOperation {
   marketplace: string;

@@ -21,7 +21,7 @@ import {
   Listing,
   insertAutomationRuleSchema, insertAutomationScheduleSchema, insertAutomationLogSchema,
   insertPoshmarkShareSettingsSchema, insertOfferTemplateSchema
-} from "../shared/schema.js";
+} from "../shared/schema.ts";
 import { hashPassword, verifyPassword, generateToken, validatePassword, verifyToken } from "./auth";
 import { ObjectStorageService } from "./objectStorage";
 import { automationService } from "./services/automationService";

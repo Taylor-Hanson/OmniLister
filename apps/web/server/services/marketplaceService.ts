@@ -1,5 +1,5 @@
-import { type MarketplaceConnection, type Listing, type ListingPost } from "../shared/schema.js";
-import { marketplaces, type MarketplaceConfig } from "../../shared/marketplaceConfig.js";
+import { type MarketplaceConnection, type Listing, type ListingPost } from "../shared/schema.ts";
+import { marketplaces, type MarketplaceConfig } from "../../shared/marketplaceConfig.ts";
 import { rateLimitMiddleware, type ApiRequest, RateLimitError } from "./rateLimitMiddleware";
 import { rateLimitService } from "./rateLimitService";
 import { ebayApiService, type EbayInventoryItem, type EbayOffer, type EbayAccountPolicies } from "./ebayApiService";
